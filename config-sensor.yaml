@@ -1,0 +1,11 @@
+database_uri: "sqlite:///iiot_data.db"
+sensor_data:
+  table_name: sensor_data
+  columns:
+    - name: id
+      type: Integer
+      primary_key: true
+    - name: reading
+      type: Float
+    - name: recorded_at
+      type: DateTime
