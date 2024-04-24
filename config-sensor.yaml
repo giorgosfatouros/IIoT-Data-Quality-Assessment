@@ -1,0 +1,27 @@
+database_uri: sqlite:///moh_iot_data.db
+sensor_data:
+  columns:
+  - name: timestamp
+    primary_key: true
+    type: DateTime
+  - name: sensor_22si101
+    type: Float
+  - name: sensor_22vi01
+    type: Float
+  - name: sensor_22vi04
+    type: Float
+  - name: sensor_22vi06
+    type: Float
+  - name: sensor_22vi08
+    type: Float
+  - name: sensor_22pi69
+    type: Float
+  - name: sensor_22pi70
+    type: Float
+  - name: sensor_22zi10
+    type: Float
+  - name: sensor_22zi09
+    type: Float
+  - name: sensor_22zi11
+    type: Float
+  table_name: KT2201
