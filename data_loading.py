@@ -22,6 +22,13 @@ def load_data_to_db(df, session):
         )
         session.add(sensor_data)
     session.commit()
+from utils import preprocess_sensor_data
+from model import load_config, construct_sensor_data_class, get_session
+
+config = load_config()
+if 'SensorData' not in globals():
+    SensorData = construct_sensor_data_class(config)
+engine = setup_database(config)
 
 
 def show():
@@ -57,6 +64,8 @@ def show():
             if persist_data:
                 session = get_session(engine)
                 load_data_to_db(readings, session)
+                load_data_to_db(readings, session, SensorData)
+
                 st.success("Data successfully saved to the database!")
                 st.success("Data successfully prepared for visualization. Please proceed to the **Visualization** "
                            "page to explore your data.")
