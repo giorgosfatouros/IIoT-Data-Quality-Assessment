@@ -13,21 +13,6 @@ def load_config(config_path='config-sensor.yaml'):
         return yaml.safe_load(file)
 
 
-def construct_sensor_data_class(config):
-    attrs = {'__tablename__': config['sensor_data']['table_name']}
-    for column in config['sensor_data']['columns']:
-        column_type = column['type']
-        if column_type == 'Integer':
-            attrs[column['name']] = Column(Integer, primary_key=True if column.get('primary_key', False) else False)
-        elif column_type == 'String':
-            attrs[column['name']] = Column(String)
-        elif column_type == 'Float':
-            attrs[column['name']] = Column(Float)
-        elif column_type == 'DateTime':
-            attrs[column['name']] = Column(DateTime)
-    return type('SensorData', (Base,), attrs)
-
-
 def setup_database(config):
     engine = create_engine(config['database_uri'])
     Base.metadata.create_all(engine)
@@ -62,31 +47,31 @@ def create_config_file(df, table_name, database_uri="sqlite:///iiot_data.db", fi
         yaml.dump(config, file, default_flow_style=False)
 
 
-# def construct_sensor_data_class(config):
-#     attrs = {'__tablename__': config['sensor_data']['table_name'], '__table_args__': {'extend_existing': True}}
-#     for column in config['sensor_data']['columns']:
-#         column_type = column['type']
-#         column_name = column['name']
-#         kwargs = {'primary_key': column.get('primary_key', False)}  # Handle primary_key
-# 
-#         # Prepend 'sensor_' to column names that start with a number
-#         if column_name[0].isdigit():
-#             column_name = 'sensor_' + column_name
-# 
-#         # Dynamically assign the column type based on the configuration
-#         if column_type == 'Integer':
-#             attrs[column_name] = Column(Integer, **kwargs)
-#         elif column_type == 'String':
-#             attrs[column_name] = Column(String, **kwargs)
-#         elif column_type == 'Float':
-#             attrs[column_name] = Column(Float, **kwargs)
-#         elif column_type == 'DateTime':
-#             attrs[column_name] = Column(DateTime, **kwargs)
-#         else:
-#             raise ValueError(f"Unsupported column type {column_type}")
-# 
-#     # Create a new class type with all attributes
-#     return type('SensorData', (Base,), attrs)
+def construct_sensor_data_class(config):
+    attrs = {'__tablename__': config['sensor_data']['table_name'], '__table_args__': {'extend_existing': True}}
+    for column in config['sensor_data']['columns']:
+        column_type = column['type']
+        column_name = column['name']
+        kwargs = {'primary_key': column.get('primary_key', False)}  # Handle primary_key
+
+        # Prepend 'sensor_' to column names that start with a number
+        if column_name[0].isdigit():
+            column_name = 'sensor_' + column_name
+
+        # Dynamically assign the column type based on the configuration
+        if column_type == 'Integer':
+            attrs[column_name] = Column(Integer, **kwargs)
+        elif column_type == 'String':
+            attrs[column_name] = Column(String, **kwargs)
+        elif column_type == 'Float':
+            attrs[column_name] = Column(Float, **kwargs)
+        elif column_type == 'DateTime':
+            attrs[column_name] = Column(DateTime, **kwargs)
+        else:
+            raise ValueError(f"Unsupported column type {column_type}")
+
+    # Create a new class type with all attributes
+    return type('SensorData', (Base,), attrs)
 
 
 def load_data_to_db(df, session, SensorData):
