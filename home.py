@@ -1,5 +1,6 @@
 import streamlit as st
 
+
 def show():
     st.title('IIoT Data Quality Assessment')
 

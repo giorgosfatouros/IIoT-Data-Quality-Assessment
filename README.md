@@ -16,8 +16,13 @@ Ensure you have Python and [Poetry](https://python-poetry.org/docs/#installation
 
 3. **Install Dependencies**: Run the following command to install the project dependencies specified in the `pyproject.toml` file:
 
+
+
 ```bash
+pip install pyLeanxcale-1.9.13_latest-py3-none-any.whl 
+
 poetry install
+
 ```
 
 ### 2. Configuration File
@@ -39,9 +44,14 @@ sensor_data:
 Adjust the `database_uri` and the structure under `sensor_data` to match your requirements. The type can be one of Integer, String, Float, or DateTime. If DateTime is used, specify the format to correctly parse the dates.
 
 ### 3. Running the App
+
+First start if stopped the LeanXscale Datastore
+```bash
+docker restart leanxcaledb-service
+```
 To run the app, navigate to the project directory in your terminal and run:
 
-```
+```bash
 streamlit run app.py
 ```
 

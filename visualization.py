@@ -1,6 +1,7 @@
 import streamlit as st
 from utils import visualize_data_quality, visualize_sensor_data
 
+
 def show():
     st.title('Data Visualization')
 
@@ -9,17 +10,24 @@ def show():
         with st.expander("Show/Hide Data Description"):
             st.dataframe(tags)
 
-    if 'readings' in st.session_state:
-        readings = st.session_state['readings']
+    if 'sensors' in st.session_state:
+        sensors = st.session_state['sensors']
+        # Allow user to select columns
+        selected_sensors = st.sidebar.multiselect(
+            "Select Columns for Analysis",
+            options=sensors,
+            default=[]
+        )
+        selected_columns = [s for s in selected_sensors]
 
-        # Perform any additional processing if needed
-        # For example, resampling could be dynamic based on user input
-        freq = st.selectbox('Select Resampling Frequency:', options=['30min', 'h', 'd', 'W'], index=0)  # Hourly, Daily, Weekly
-        resampled_df = readings.resample(freq).mean()
+        if 'readings' in st.session_state:
+            readings = st.session_state['readings']
 
-        # Visualization
-        visualize_sensor_data(resampled_df)
-
-    else:
-        st.write("No sensor data available. Please upload and process data in the Data Loading page.")
-
+            # Check if any columns are selected
+            if selected_columns:
+                # Visualization
+                visualize_sensor_data(readings, selected_columns, tags)
+            else:
+                st.warning("Please select at least one column for analysis.")
+        else:
+            st.warning("No sensor data available. Please upload and process data in the Data Loading page.")

@@ -1,9 +1,7 @@
 import streamlit as st
-# Assuming you have these functions defined as per your initial code snippet
 from utils import display_general_info, display_missing_values, display_outliers, check_for_duplicates, \
-    visualize_data_quality, check_timestamp_consistency, check_data_accuracy, check_data_completeness, \
-    calculate_correlation_matrix, display_correlation_report, plot_correlation_matrix, analyze_strong_correlations, \
-    display_strong_correlations
+    check_timestamp_consistency, check_data_accuracy, check_data_completeness, calculate_correlation_matrix, \
+    display_correlation_report, analyze_strong_correlations, display_strong_correlations
 
 
 def show():
@@ -15,7 +13,7 @@ def show():
         st.header("General Information")
         if 'tags' in st.session_state:
             tags = st.session_state['tags']
-            with st.expander("Show/Hide Data Description"):
+            with st.expander("**Show/Hide Data Description**"):
                 st.dataframe(tags)
         display_general_info(readings)
 
