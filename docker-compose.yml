@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  lxsdb:
+    image: ferrari
+    environment:
+      DB_USER: app
+      DB_PASS: app
+      DB_IP: db
+      DB_PORT: 1529
+      DB_NAME: MOH
+    ports:
+      - "1529:1529"
+    networks:
+      - data_network
+
+  streamlit:
+    build: .
+    environment:
+      DB_USER: app
+      DB_PASS: app
+      DB_IP: lxsdb
+      DB_PORT: 1529
+      DB_NAME: MOH
+    ports:
+      - "8501:8501"
+    depends_on:
+      - lxsdb
+    networks:
+      - data_network
+
+networks:
+  data_network:
+    driver: bridge

@@ -43,36 +43,56 @@ def calculate_invalid_readings(data, original_freq_sec=10, agg_interval_sec=3600
     return invalid_readings_df, invalid_percentages_df
 
 
+def isvalid_df(data, original_freq_sec=10, agg_interval_sec=3600):
+    """
+    Calculate the number and percentage of invalid readings for each sensor per hour.
+
+    Parameters:
+    data (pd.DataFrame): The dataframe containing sensor readings.
+    original_freq_sec (int): The frequency of the original data in seconds (default is 10 seconds).
+    agg_interval_sec (int): The aggregation interval in seconds (default is 3600 seconds for 1 hour).
+
+    Returns:
+    pd.DataFrame: A dataframe with the percentage of invalid readings for each sensor per hour.
+    """
+    expected_readings_per_hour = agg_interval_sec // original_freq_sec
+    sensor_columns = [col for col in data.columns if '_isvalid' in col]
+    print(sensor_columns)
+    print(expected_readings_per_hour)
+
+    return data[sensor_columns] / expected_readings_per_hour
+
+
 def plot_invalid_over_mean(data, invalid_data, sensor):
-    plt.figure(figsize=(14, 7))
 
-    # Ensure timestamp is datetime
-    if not pd.api.types.is_datetime64_any_dtype(data.index):
-        data.index = pd.to_datetime(data.index)
-    if not pd.api.types.is_datetime64_any_dtype(invalid_data['timestamp']):
-        invalid_data['timestamp'] = pd.to_datetime(invalid_data['timestamp'])
-
-    # Set timestamp as index for invalid_data
-    invalid_data.set_index('timestamp', inplace=True)
+    # # Ensure timestamp is datetime
+    # if not pd.api.types.is_datetime64_any_dtype(data.index):
+    #     data.index = pd.to_datetime(data.index)
+    # if not pd.api.types.is_datetime64_any_dtype(invalid_data['timestamp']):
+    #     invalid_data['timestamp'] = pd.to_datetime(invalid_data['timestamp'])
+    #
+    # # Set timestamp as index for invalid_data
+    # invalid_data.set_index('timestamp', inplace=True)
 
     # Plot the mean readings time series
     mean_series = data[f'sum_{sensor}'] / data[f'count_{sensor}']
-    plt.plot(mean_series, label='Mean Readings', color='blue')
+    with st.expander(f'Mean Readings and Invalid Readings for {sensor[3:]}', expanded=False):
+        plt.figure(figsize=(10, 3))
+        plt.plot(mean_series, label='Mean Readings', color='blue')
 
-    # Plot the invalid data points
-    invalid_points = invalid_data[invalid_data[f'count_{sensor}_invalid'] > 0]
-    plt.scatter(invalid_points.index, mean_series.loc[invalid_points.index], color='red', label='Invalid Readings')
+        # Plot the invalid data points
+        invalid_points = invalid_data[invalid_data[f'count_{sensor}_isvalid'] > 2]
+        plt.scatter(invalid_points.index, mean_series.loc[invalid_points.index], color='red', label='Invalid Readings')
 
-    plt.title(f'Mean Readings and Invalid Readings for {sensor}')
-    plt.xlabel('Time')
-    plt.ylabel('Mean Reading')
-    plt.legend()
-    st.pyplot(plt)
+        plt.xlabel('Time')
+        plt.ylabel('Mean Reading')
+        plt.legend()
+        st.pyplot(plt)
 
 
 def visualize_invalid_data(invalid_readings_df, data):
-    sensors = [col.replace('count_', '').replace('_invalid', '') for col in invalid_readings_df.columns if
-               '_invalid' in col]
+    sensors = [col.replace('count_', '').replace('_isvalid', '') for col in invalid_readings_df.columns if
+               '_isvalid' in col]
 
     for sensor in sensors:
         plot_invalid_over_mean(data, invalid_readings_df, sensor)
@@ -90,17 +110,16 @@ def show():
         readings = st.session_state['raw_readings']
 
         # Calculate invalid readings
-        invalid_readings_df, invalid_percentages_df = calculate_invalid_readings(readings)
+        valid_readings_df = isvalid_df(readings)
 
         # Visualization
-        visualize_invalid_data(invalid_readings_df, readings)
+        visualize_invalid_data(valid_readings_df, readings)
 
         # Show overall statistics
         st.subheader("Overall Statistics")
         st.write("### Invalid Readings Summary")
-        st.dataframe(invalid_readings_df.describe())
-        st.write("### Invalid Percentages Summary")
-        st.dataframe(invalid_percentages_df.describe())
+        valid_readings_df.rename(columns=lambda x: x.replace('count_', '').replace('_isvalid', ''), inplace=True)
+        st.dataframe((valid_readings_df*360).describe())
     else:
         st.warning("No sensor data available. Please upload and process data in the Data Loading page.")
 

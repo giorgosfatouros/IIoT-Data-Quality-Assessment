@@ -1,3 +1,5 @@
+import os
+
 import streamlit as st
 import pandas as pd
 from utils import preprocess_sensor_data
@@ -53,6 +55,13 @@ DB_PASS = 'app'
 DB_IP = '0.0.0.0'
 DB_PORT = '1529'
 DB_NAME = 'MOH'
+
+# Read environment variables
+# DB_USER = os.getenv('DB_USER')
+# DB_PASS = os.getenv('DB_PASS')
+# DB_IP = os.getenv('DB_IP')
+# DB_PORT = os.getenv('DB_PORT')
+# DB_NAME = os.getenv('DB_NAME')
 
 engine = get_db_connection(DB_USER, DB_PASS, DB_IP, DB_PORT, DB_NAME)
 

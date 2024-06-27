@@ -500,33 +500,37 @@ def calculate_missing_readings(data, original_freq_sec=10, agg_interval_sec=3600
     return missing_readings_df, missing_percentages_df
 
 
-def visualize_overall_data_quality(missing_readings_df, missing_percentages_df):
+def visualize_overall_data_quality(missing_readings_df, missing_percentages_df, missing_intervals):
     # Check if there is data to plot
-
-    if not missing_readings_df.empty:
-        with st.expander("Total Missing Readings per sensor", expanded=False):
-            # Plotting the total missing readings per sensor
-            plt.figure(figsize=(8, 3))
-            missing_totals = missing_readings_df.sum()
-            sns.barplot(x=missing_totals.index, y=missing_totals.values)
-            plt.title("Total Missing Readings per Sensor")
-            plt.xlabel("Sensor")
-            plt.ylabel("Total Missing Readings")
-            plt.xticks(rotation=90)
-            st.pyplot(plt)
 
     if not missing_percentages_df.empty:
         with st.expander("Total Missing Readings per sensor (%)", expanded=False):
-
             # Plotting the total missing readings percentages per sensor
             plt.figure(figsize=(8, 3))
-            missing_percentage_totals = missing_percentages_df.mean()
-            sns.barplot(x=missing_percentage_totals.index, y=missing_percentage_totals.values)
-            plt.title("Average Missing Readings Percentage per Sensor")
+            sns.barplot(x='sensor', y='missing_percentage', data=missing_percentages_df)
             plt.xlabel("Sensor")
-            plt.ylabel("Average Missing Percentage (%)")
+            plt.ylabel("Missing Percentage (%)")
             plt.xticks(rotation=90)
             st.pyplot(plt)
+
+        with st.expander("Total Missing Readings per sensor", expanded=False):
+            # Plotting the total missing readings percentages per sensor
+            plt.figure(figsize=(8, 3))
+            sns.barplot(x='sensor', y='missing', data=missing_readings_df)
+            plt.xlabel("Sensor")
+            plt.ylabel("Total Missing")
+            plt.xticks(rotation=90)
+            st.pyplot(plt)
+
+        with st.expander("Periods of Missing Readings per sensor", expanded=False):
+            for sensor, intervals in missing_intervals.items():
+                if intervals:
+                    st.write(f"Sensor: **{sensor}**")
+                    for interval in intervals:
+                        st.write(f"From {interval[0]} to {interval[1]}")
+                else:
+                    st.write(f"Sensor: **{sensor}** has no missing periods.")
+
 
 
 def calculate_invalid_readings(data, original_freq_sec=10, agg_interval_sec=3600):
