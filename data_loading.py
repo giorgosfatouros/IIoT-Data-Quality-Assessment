@@ -1,12 +1,10 @@
 import os
-
 import streamlit as st
 import pandas as pd
-from utils import preprocess_sensor_data
+from utils import preprocess_sensor_data, infer_aggregation_frequency
 from sqlalchemy.sql import select
 from sqlalchemy import Table, MetaData
-from sqlalchemy import inspect
-from sqlalchemy import create_engine
+from sqlalchemy import inspect, create_engine
 from model import get_session
 
 
@@ -49,28 +47,29 @@ def load_data_from_db(table_name, engine):
         return pd.DataFrame()
 
 
-# Connection
+# Database connection settings
 DB_USER = 'app'
 DB_PASS = 'app'
 DB_IP = '0.0.0.0'
 DB_PORT = '1529'
 DB_NAME = 'MOH'
 
-# Read environment variables
-# DB_USER = os.getenv('DB_USER')
-# DB_PASS = os.getenv('DB_PASS')
-# DB_IP = os.getenv('DB_IP')
-# DB_PORT = os.getenv('DB_PORT')
-# DB_NAME = os.getenv('DB_NAME')
+# Read environment variables if needed
+# DB_USER = os.getenv('DB_USER', DB_USER)
+# DB_PASS = os.getenv('DB_PASS', DB_PASS)
+# DB_IP = os.getenv('DB_IP', DB_IP)
+# DB_PORT = os.getenv('DB_PORT', DB_PORT)
+# DB_NAME = os.getenv('DB_NAME', DB_NAME)
 
 engine = get_db_connection(DB_USER, DB_PASS, DB_IP, DB_PORT, DB_NAME)
 
 
 def show():
-    st.title('Data Loading and Storage')
+    st.title('Data Loading, Annotation, and Storage')
 
-    # uploaded_file2 = st.file_uploader("**Upload Sensor and Equipment/Machine descriptions**", type='csv', key='tags')
-    # if uploaded_file2 is not None:
+    st.write("""
+    Use this page to load sensor data from the LeanXscale (LXS) database. You can retrieve aggregated data and perform various analyses on the raw data using these aggregations.
+    """)
 
     table_names = get_table_names(engine)
     table_names = [col for col in table_names if "hours" in col.lower()]
@@ -81,6 +80,9 @@ def show():
         placeholder="Choose a machine"
     )
 
+    st.session_state['ORIG_FREQ'] = st.number_input('Set frequency of the original data (in seconds)', min_value=1, value=10)
+
+
     if selected_table:
         with st.spinner('Loading data...'):
             readings = load_data_from_db(selected_table, engine)
@@ -89,41 +91,51 @@ def show():
             st.session_state['readings'] = readings
             st.session_state['sensors'] = sensors
 
-        with st.expander("Show/Hide Data"):
+        inferred_freq = infer_aggregation_frequency(readings)
+        if inferred_freq is not None:
+            st.success(f"Aggregation frequency: {inferred_freq} seconds")
+            st.session_state['AGG_FREQ'] = int(inferred_freq/st.session_state['ORIG_FREQ'])
+
+        else:
+            st.warning("Could not infer aggregation frequency from the data")
+
+        with st.expander("Show/Hide Annotated Data"):
             st.dataframe(readings)
 
-        uploaded_file2 = "data/tags.csv"
-        tags = pd.read_csv(uploaded_file2, header=0)
+        tags_path = "data/tags.csv"
+        tags = pd.read_csv(tags_path, header=0)
         tags.columns = tags.columns.str.lower()
         tags.tag = tags.tag.str.lower()
         tags = tags[tags.tag.isin(readings.columns)].reset_index(drop=True)
-
-
-        # tags = tags.iloc[:, 1:]
         tags.columns = [col.replace(' ', '_') for col in tags.columns]
+
         with st.expander("Show/Hide Data Description"):
             st.dataframe(tags)
+
         selected_machine = st.selectbox('Select a Machine:', tags['machine_group'].unique())
         st.write(f'You have selected Equipment: **{selected_machine}**')
+
         machine_tags = tags[
-            tags['machine_group'].str.contains(selected_machine[1:], case=False, na=False)].reset_index(
-            drop=True)
+            tags['machine_group'].str.contains(selected_machine[1:], case=False, na=False)
+        ].reset_index(drop=True)
         st.session_state['tags'] = machine_tags
 
         st.write(f'**{machine_tags.shape[0]}** Sensors are monitoring the **{selected_machine}** equipment')
 
-        # persist_data = st.checkbox("Persist data in the database for overall analytics?")
-        persist_data = False
+        persist_data = st.checkbox("Export annotated dataset?")
         if persist_data:
-            session = get_session(engine)
-            load_data_to_db(readings, session)
-            load_data_to_db(readings, session, SensorData)
-
-            st.success("Data successfully saved to the database!")
-            st.success("Data successfully prepared for visualization. Please proceed to the **Visualization** "
-                       "page to explore your data.")
+            if 'readings' in st.session_state:
+                csv = st.session_state['readings'].to_csv().encode('utf-8')
+                st.download_button(
+                    label="Download data as CSV",
+                    data=csv,
+                    file_name='annotated_readings.csv',
+                    mime='text/csv',
+                )
+            else:
+                st.warning("No sensor data available. Please select data from the side panel.")
         else:
-            st.success("Data successfully prepared for visualization. Please proceed to the **Visualization** "
-                       "page to explore your data.")
+            st.success(
+                "Data successfully prepared for visualization. Please proceed to the **Visualization** page to explore your data.")
     else:
-        st.warning("Please select at Machine for analysis.")
+        st.warning("Please select a Machine for analysis.")

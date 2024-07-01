@@ -3,85 +3,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def calculate_invalid_readings(data, original_freq_sec=10, agg_interval_sec=3600):
+def plot_invalid_over_mean(data, sensor, threshold):
     """
-    Calculate the number and percentage of invalid readings for each sensor per hour.
-
-    Parameters:
-    data (pd.DataFrame): The dataframe containing sensor readings.
-    original_freq_sec (int): The frequency of the original data in seconds (default is 10 seconds).
-    agg_interval_sec (int): The aggregation interval in seconds (default is 3600 seconds for 1 hour).
-
-    Returns:
-    pd.DataFrame: A dataframe with the number and percentage of invalid readings for each sensor per hour.
+    Plot the mean readings time series and highlight invalid readings.
     """
-    if 'timestamp' in data.columns:
-        data.set_index('timestamp', inplace=True)
-    elif not isinstance(data.index, pd.DatetimeIndex):
-        raise KeyError("The dataframe must have a datetime index or a 'timestamp' column.")
+    mean_series = data[sensor]
 
-    expected_readings_per_hour = agg_interval_sec // original_freq_sec
-    sensor_columns = [col for col in data.columns if col.startswith('count_') and not col.endswith('_isvalid')]
-
-    invalid_readings = {}
-    invalid_percentages = {}
-
-    for sensor in sensor_columns:
-        base_sensor = sensor.replace('count_', '')
-        valid_col = f"count_{base_sensor}_isvalid"
-        invalid_col = f"count_{base_sensor}_invalid"
-        percentage_col = f"count_{base_sensor}_invalid_percentage"
-
-        data[invalid_col] = data[sensor] - data[valid_col]
-        data[percentage_col] = (data[invalid_col] / expected_readings_per_hour) * 100
-
-        invalid_readings[invalid_col] = data[invalid_col]
-        invalid_percentages[percentage_col] = data[percentage_col]
-
-    invalid_readings_df = data[list(invalid_readings.keys())].reset_index()
-    invalid_percentages_df = data[list(invalid_percentages.keys())].reset_index()
-    return invalid_readings_df, invalid_percentages_df
-
-
-def isvalid_df(data, original_freq_sec=10, agg_interval_sec=3600):
-    """
-    Calculate the number and percentage of invalid readings for each sensor per hour.
-
-    Parameters:
-    data (pd.DataFrame): The dataframe containing sensor readings.
-    original_freq_sec (int): The frequency of the original data in seconds (default is 10 seconds).
-    agg_interval_sec (int): The aggregation interval in seconds (default is 3600 seconds for 1 hour).
-
-    Returns:
-    pd.DataFrame: A dataframe with the percentage of invalid readings for each sensor per hour.
-    """
-    expected_readings_per_hour = agg_interval_sec // original_freq_sec
-    sensor_columns = [col for col in data.columns if '_isvalid' in col]
-    print(sensor_columns)
-    print(expected_readings_per_hour)
-
-    return data[sensor_columns] / expected_readings_per_hour
-
-
-def plot_invalid_over_mean(data, invalid_data, sensor):
-
-    # # Ensure timestamp is datetime
-    # if not pd.api.types.is_datetime64_any_dtype(data.index):
-    #     data.index = pd.to_datetime(data.index)
-    # if not pd.api.types.is_datetime64_any_dtype(invalid_data['timestamp']):
-    #     invalid_data['timestamp'] = pd.to_datetime(invalid_data['timestamp'])
-    #
-    # # Set timestamp as index for invalid_data
-    # invalid_data.set_index('timestamp', inplace=True)
-
-    # Plot the mean readings time series
-    mean_series = data[f'sum_{sensor}'] / data[f'count_{sensor}']
-    with st.expander(f'Mean Readings and Invalid Readings for {sensor[3:]}', expanded=False):
+    with st.expander(f'Mean Readings and Invalid Readings for {sensor}', expanded=False):
         plt.figure(figsize=(10, 3))
         plt.plot(mean_series, label='Mean Readings', color='blue')
 
-        # Plot the invalid data points
-        invalid_points = invalid_data[invalid_data[f'count_{sensor}_isvalid'] > 2]
+        invalid_points = data[data[f'{sensor}_alarms'] >= threshold]
         plt.scatter(invalid_points.index, mean_series.loc[invalid_points.index], color='red', label='Invalid Readings')
 
         plt.xlabel('Time')
@@ -90,16 +22,67 @@ def plot_invalid_over_mean(data, invalid_data, sensor):
         st.pyplot(plt)
 
 
-def visualize_invalid_data(invalid_readings_df, data):
-    sensors = [col.replace('count_', '').replace('_isvalid', '') for col in invalid_readings_df.columns if
-               '_isvalid' in col]
+def visualize_invalid_data(data, threshold):
+    """
+    Visualize the invalid data for all sensors based on the threshold.
+    """
+    sensors = [col for col in data.columns if not 'alarm' in col in col]
 
     for sensor in sensors:
-        plot_invalid_over_mean(data, invalid_readings_df, sensor)
+        plot_invalid_over_mean(data, sensor, threshold)
+
+
+def display_overall_statistics(readings, expected_readings_per_hour):
+    """
+    Display overall statistics for the sensor readings focusing on sensors with at least one alarm.
+    """
+    alarm_columns = [col for col in readings.columns if '_alarms' in col]
+
+    # Filter columns with at least one alarm
+    alarms_df = readings[alarm_columns]
+    sensors_with_alarms = alarms_df.loc[:, (alarms_df > 0).any(axis=0)]
+
+    if sensors_with_alarms.empty:
+        st.write("No alarms detected in any sensor.")
+        return
+
+    total_readings = readings.shape[0] * expected_readings_per_hour
+    total_alarms = sensors_with_alarms.sum().sum()
+    avg_alarms_per_sensor = sensors_with_alarms.mean().mean()
+    max_alarms_sensor = sensors_with_alarms.sum().idxmax()
+    max_alarms_count = sensors_with_alarms.sum().max()
+
+    with st.expander(f'Overall Statistics of Invalid/Alarm Data', expanded=False):
+        st.write(f"**Total Readings:** {total_readings}")
+        st.write(f"**Total Alarms:** {total_alarms}")
+        st.write(f"**Average Alarms per Sensor:** {avg_alarms_per_sensor:.2f}")
+        st.write(f"**Sensor with Most Alarms:** {max_alarms_sensor} ({max_alarms_count} alarms)")
+
+    with st.expander(f'Detailed Report of Sensors with Alarms', expanded=False):
+        for sensor in sensors_with_alarms.columns:
+            total_sensor_alarms = sensors_with_alarms[sensor].sum()
+            st.write(f"**{sensor}:** {total_sensor_alarms}")
+
+
+def update_threshold():
+    st.session_state.threshold_changed = True
 
 
 def show():
     st.title('Invalid Values Analysis')
+    st.write("This page analyzes the invalid readings or alarms from sensor data, which are aggregated "
+             "from the original frequency for fast and efficient analysis. The focuses on detecting and understanding "
+             "alarms triggered by invalid readings in the data.")
+
+    if 'threshold_changed' not in st.session_state:
+        st.session_state.threshold_changed = False
+
+    threshold = st.slider('Set threshold for invalid readings',
+                          min_value=1,
+                          max_value=st.session_state['AGG_FREQ'],
+                          value=1,
+                          key='threshold',
+                          on_change=update_threshold)
 
     if 'tags' in st.session_state:
         tags = st.session_state['tags']
@@ -107,21 +90,17 @@ def show():
             st.dataframe(tags)
 
     if 'readings' in st.session_state:
-        readings = st.session_state['raw_readings']
-
-        # Calculate invalid readings
-        valid_readings_df = isvalid_df(readings)
-
-        # Visualization
-        visualize_invalid_data(valid_readings_df, readings)
-
+        readings = st.session_state['readings']
         # Show overall statistics
-        st.subheader("Overall Statistics")
-        st.write("### Invalid Readings Summary")
-        valid_readings_df.rename(columns=lambda x: x.replace('count_', '').replace('_isvalid', ''), inplace=True)
-        st.dataframe((valid_readings_df*360).describe())
+        display_overall_statistics(readings, st.session_state['AGG_FREQ'])
+        # Visualization
+        visualize_invalid_data(readings, threshold)
     else:
         st.warning("No sensor data available. Please upload and process data in the Data Loading page.")
+
+    if st.session_state.threshold_changed:
+        st.session_state.threshold_changed = False
+        st.rerun()
 
 
 if __name__ == "__main__":

@@ -15,23 +15,37 @@ def extract_numbers(s):
 
 
 def preprocess_sensor_data(df):
+    # Identify unique sensors
     sensors = list(set(col.split('_')[1] for col in df.columns if col.startswith('sum')))
 
     # Calculate mean value per sensor
     mean_values_per_sensor = {}
+    alarms_per_sensor = {}
     for sensor in sensors:
         sum_col = f'sum_{sensor}'
         count_col = f'count_{sensor}'
         mean_col = f'mean_{sensor}'
+        alarm_col = f'count_{sensor}_isvalid'
+        alarms_col = f'{sensor}_alarms'  # <sensor_id>_alarms for alarms
 
         if sum_col in df.columns and count_col in df.columns:
             mean_values_per_sensor[mean_col] = df[sum_col] / df[count_col]
 
+        if alarm_col in df.columns:
+            alarms_per_sensor[alarms_col] = df[alarm_col]
+
+    # Convert to DataFrames
     mean_df = pd.DataFrame(mean_values_per_sensor)
-    # df = pd.concat([mean_df, df], axis=1)
+    alarms_df = pd.DataFrame(alarms_per_sensor)
+    alarms_df.columns = [col.replace('col', '') for col in alarms_df.columns]
+
+    # Extract sensor IDs
     sensors = [s.replace('col', '') for s in sensors]
     mean_df.columns = sensors
-    return mean_df, sensors
+    # Combine mean values and alarm counts into a single DataFrame
+    result_df = pd.concat([mean_df, alarms_df], axis=1)
+
+    return result_df, sensors
 
 
 def display_general_info(df):
@@ -305,90 +319,97 @@ def plot_rolling_stats(col, filtered_data, tag_info):
 
 
 def visualize_sensor_data(df, selected_columns, tags):
-    # Filter the dataframe based on selected columns
-    filtered_data = df[selected_columns]
+    try:
+        # Filter the dataframe based on selected columns
+        filtered_data = df[selected_columns]
 
-    # Sensor Summary Statistics
-    with st.expander("Sensor Summary Statistics", expanded=True):
-        summary_stats = filtered_data.describe()
-        st.write(summary_stats)
+        # Sensor Summary Statistics
+        with st.expander("Sensor Summary Statistics", expanded=True):
+            st.write("This section provides a summary of the selected sensor data, including count, mean, standard deviation, min, max, and percentiles.")
+            summary_stats = filtered_data.describe()
+            st.write(summary_stats)
 
-    # Data Quality Assessment (commented out in original code)
-    # with st.expander("Data Quality Assessment"):
-    #     missing_values = filtered_data.isnull().sum()
-    #     st.write("Missing Values per Column")
-    #     st.write(missing_values)
+        # Detecting Outliers using Z-Score
+        with st.expander("Outliers Detection (Z-Score > 3)", expanded=False):
+            st.write("This section identifies outliers in the data using the Z-Score method. An outlier is defined as a data point with a Z-Score greater than 3 or less than -3.")
+            z_scores = (filtered_data - filtered_data.mean()) / filtered_data.std()
+            outliers = z_scores.abs() > 3
+            st.write(outliers.sum())
 
-    # Detecting Outliers using Z-Score
-    with st.expander("Outliers Detection (Z-Score > 3)", expanded=False):
-        z_scores = (filtered_data - filtered_data.mean()) / filtered_data.std()
-        outliers = z_scores.abs() > 3
-        st.write(outliers.sum())
+        # Correlation Analysis
+        with st.expander("Correlation Analysis", expanded=False):
+            st.write("This section displays the correlation matrix for the selected sensors, showing how each sensor's data is correlated with others.")
+            correlation_matrix = filtered_data.corr()
+            fig, ax = plt.subplots(figsize=(10, 5))
+            sns.heatmap(correlation_matrix, annot=True, ax=ax, cmap='coolwarm')
+            fig.tight_layout()
+            st.pyplot(fig)
 
-    # Correlation Analysis
-    with st.expander("Correlation Analysis", expanded=False):
-        correlation_matrix = filtered_data.corr()
-        fig, ax = plt.subplots(figsize=(10, 5))  # Adjust height here
-        sns.heatmap(correlation_matrix, annot=True, ax=ax, cmap='coolwarm')
-        st.pyplot(fig)
+        # Time Series Analysis
+        with st.expander("Time Series Analysis", expanded=False):
+            st.write("This section provides a time series analysis for the selected sensors, including rolling mean and standard deviation to observe trends and variability.")
+            for col in selected_columns:
+                tag_info = tags.loc[tags.tag == col]
+                st.write(f'**{get_plot_title(col, tag_info)}**')
+                plot_rolling_stats(col, filtered_data, tag_info)
 
-    # Time Series Analysis
-    with st.expander("Time Series Analysis", expanded=False):
-        for col in selected_columns:
-            tag_info = tags.loc[tags.tag == col]
-            title = get_plot_title(col, tag_info)
-            st.write(f'**{title}**')
-            plot_rolling_stats(col, filtered_data, tag_info)
+        # Histogram and Density Plots
+        with st.expander("Histogram and Density Plots", expanded=False):
+            st.write("This section provides histogram and density plots for the selected sensors to visualize the distribution of the data.")
+            for col in selected_columns:
+                tag_info = tags.loc[tags.tag == col]
+                st.write(f'**{get_plot_title(col, tag_info)}**')
+                fig, ax = plt.subplots(figsize=(10, 3))
+                sns.histplot(filtered_data[col], kde=True, ax=ax)
+                plt.xticks(rotation=45)
+                fig.tight_layout()
+                st.pyplot(fig)
 
-    # Histogram and Density Plots
-    with st.expander("Histogram and Density Plots", expanded=False):
-        for col in selected_columns:
-            tag_info = tags.loc[tags.tag == col]
-            title = get_plot_title(col, tag_info)
-            st.write(f'**{title}**')
-            fig, ax = plt.subplots(figsize=(10, 3))  # Adjust height here
-            sns.histplot(filtered_data[col], kde=True, ax=ax)
+        # Box Plots
+        with st.expander("Box Plots", expanded=False):
+            st.write("This section provides box plots for the selected sensors to visualize the spread and detect any potential outliers.")
+            fig, ax = plt.subplots(figsize=(10, 3))
+            sns.boxplot(data=filtered_data, ax=ax)
             plt.xticks(rotation=45)
+            fig.tight_layout()
             st.pyplot(fig)
 
-    # Box Plots
-    with st.expander("Box Plots", expanded=False):
-        fig, ax = plt.subplots(figsize=(10, 3))  # Adjust height here
-        sns.boxplot(data=filtered_data, ax=ax)
-        plt.xticks(rotation=45)
-        st.pyplot(fig)
+        # Trend and Seasonal Decomposition
+        with st.expander("Trend and Seasonal Decomposition", expanded=False):
+            st.write("This section decomposes the time series data into trend, seasonal, and residual components to better understand the underlying patterns.")
+            for col in selected_columns:
+                tag_info = tags.loc[tags.tag == col]
+                st.write(f'**{get_plot_title(col, tag_info)}**')
+                result = seasonal_decompose(filtered_data[col], model='additive', period=24)
+                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(10, 6))
+                result.observed.plot(ax=ax1)
+                ax1.set_ylabel('Observed')
+                result.trend.plot(ax=ax2)
+                ax2.set_ylabel('Trend')
+                result.seasonal.plot(ax=ax3)
+                ax3.set_ylabel('Seasonal')
+                result.resid.plot(ax=ax4)
+                ax4.set_ylabel('Residual')
+                fig.tight_layout()
+                st.pyplot(fig)
 
-    # Trend and Seasonal Decomposition
-    with st.expander("Trend and Seasonal Decomposition", expanded=False):
-        for col in selected_columns:
-            tag_info = tags.loc[tags.tag == col]
-            title = get_plot_title(col, tag_info)
-            st.write(f'**{title}**')
-            result = seasonal_decompose(filtered_data[col], model='additive', period=24)  # Assuming hourly data
-            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(10, 6))
-            result.observed.plot(ax=ax1)
-            ax1.set_ylabel('Observed')
-            result.trend.plot(ax=ax2)
-            ax2.set_ylabel('Trend')
-            result.seasonal.plot(ax=ax3)
-            ax3.set_ylabel('Seasonal')
-            result.resid.plot(ax=ax4)
-            ax4.set_ylabel('Residual')
-            st.pyplot(fig)
+        # Anomaly Detection
+        with st.expander("Anomaly Detection", expanded=False):
+            st.write("This section detects anomalies in the data by identifying data points that deviate significantly from the mean.")
+            for col in selected_columns:
+                tag_info = tags.loc[tags.tag == col]
+                st.write(f'**{get_plot_title(col, tag_info)}**')
+                anomalies = detect_anomalies(filtered_data[col])
+                fig, ax = plt.subplots(figsize=(10, 3))
+                ax.plot(filtered_data[col], label='Data')
+                ax.scatter(anomalies.index, anomalies, color='red', label='Anomalies')
+                plt.xticks(rotation=45)
+                ax.legend()
+                fig.tight_layout()
+                st.pyplot(fig)
 
-    # Anomaly Detection
-    with st.expander("Anomaly Detection", expanded=False):
-        for col in selected_columns:
-            tag_info = tags.loc[tags.tag == col]
-            title = get_plot_title(col, tag_info)
-            st.write(f'**{title}**')
-            anomalies = detect_anomalies(filtered_data[col])
-            fig, ax = plt.subplots(figsize=(10, 3))  # Adjust height here
-            ax.plot(filtered_data[col], label='Data')
-            ax.scatter(anomalies.index, anomalies, color='red', label='Anomalies')
-            plt.xticks(rotation=45)
-            ax.legend()
-            st.pyplot(fig)
+    except Exception as e:
+        st.error(f"An error occurred during visualization: {e}")
 
 
 def detect_anomalies(series, threshold=2):
@@ -399,19 +420,13 @@ def detect_anomalies(series, threshold=2):
     return anomalies
 
 
-#     init_streamlit_comm()
-#     df = df.reset_index(names='timestamp')
-#
-#     # Get an instance of pygwalker's renderer. You should cache this instance to effectively prevent the growth of
-#     # in-process memory.
-#     @st.cache_resource
-#     def get_pyg_renderer() -> "StreamlitRenderer":
-#         # When you need to publish your app to the public, you should set the debug parameter to False to prevent
-#         # other users from writing to your chart configuration file.
-#         return StreamlitRenderer(df, spec="./gw_config.json", debug=False)
-#
-#     renderer = get_pyg_renderer()
-#     return renderer.render_explore()
+def infer_aggregation_frequency(df):
+    time_diffs = df.index.to_series().diff().dropna().dt.total_seconds()
+    if not time_diffs.empty:
+        inferred_freq = time_diffs.mode().iloc[0]
+        return inferred_freq
+    else:
+        return None
 
 
 def calculate_correlation_matrix(df):
@@ -467,37 +482,6 @@ def display_strong_correlations(strong_correlations):
             st.write(f"**{sensor_a}** and **{sensor_b}** have a strong correlation of **{correlation:.2f}**")
     else:
         st.write("No strong correlations detected above the specified threshold.")
-
-
-
-def calculate_missing_readings(data, original_freq_sec=10, agg_interval_sec=3600):
-    """
-    Calculate the number of missing readings (NaNs) and their percentage for each sensor per hour.
-
-    Parameters:
-    data (pd.DataFrame): The dataframe containing sensor readings.
-    original_freq_sec (int): The frequency of the original data in seconds (default is 10 seconds).
-    agg_interval_sec (int): The aggregation interval in seconds (default is 3600 seconds for 1 hour).
-
-    Returns:
-    pd.DataFrame: A dataframe with the number and percentage of missing readings for each sensor per hour.
-    """
-    expected_readings_per_hour = agg_interval_sec // original_freq_sec
-    sensor_columns = [col for col in data.columns if 'count_' in col and '_isvalid' not in col]
-    missing_readings = {}
-    missing_percentages = {}
-
-    for sensor in sensor_columns:
-        missing_col = f"{sensor}_missing"
-        percentage_col = f"{sensor}_missing_percentage"
-        data[missing_col] = expected_readings_per_hour - data[sensor]
-        data[percentage_col] = (data[missing_col] / expected_readings_per_hour) * 100
-        missing_readings[missing_col] = data[missing_col]
-        missing_percentages[percentage_col] = data[percentage_col]
-
-    missing_readings_df = pd.DataFrame(missing_readings)
-    missing_percentages_df = pd.DataFrame(missing_percentages)
-    return missing_readings_df, missing_percentages_df
 
 
 def visualize_overall_data_quality(missing_readings_df, missing_percentages_df, missing_intervals):

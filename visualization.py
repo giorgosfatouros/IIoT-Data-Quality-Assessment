@@ -5,6 +5,10 @@ from utils import visualize_data_quality, visualize_sensor_data
 def show():
     st.title('Data Visualization')
 
+    st.write("""
+    Use this page to visualize your sensor data. You can select specific sensors for detailed analysis and view various 
+    data plots and analyses.""")
+
     if 'tags' in st.session_state:
         tags = st.session_state['tags']
         with st.expander("Show/Hide Data Description"):
@@ -30,4 +34,6 @@ def show():
             else:
                 st.warning("Please select at least one column for analysis.")
         else:
-            st.warning("No sensor data available. Please upload and process data in the Data Loading page.")
+            st.warning("No sensor data available. Please load data in the Data Loading page.")
+    else:
+        st.warning("No sensor information available. Please load data in the Data Loading page.")

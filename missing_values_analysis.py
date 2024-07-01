@@ -2,7 +2,7 @@ import streamlit as st
 from utils import visualize_overall_data_quality
 
 
-def calculate_missing_readings(data, original_freq_sec=10, aggr=360):
+def calculate_missing_readings(data):
     """
     Calculate the percentage of missing readings (NaNs) and periods of missing readings for each sensor.
 
@@ -14,6 +14,8 @@ def calculate_missing_readings(data, original_freq_sec=10, aggr=360):
     pd.DataFrame: A dataframe with the percentage of missing readings for each sensor.
     dict: A dictionary with the periods of missing readings for each sensor.
     """
+    aggr = st.session_state['AGG_FREQ']
+    original_freq_sec = st.session_state['ORIG_FREQ']
     # Calculate the total number of expected readings
     total_duration_sec = (data.index[-1] - data.index[0]).total_seconds()
     expected_readings = total_duration_sec // original_freq_sec
@@ -73,6 +75,9 @@ def identify_intervals(timestamps, freq_sec):
 
 def show():
     st.title('Missing Values Analysis')
+    st.write("This page analyzes the missing readings from the raw sensor data, which are aggregated "
+             "from the original frequency for fast and efficient analysis. The focuses on detecting and understanding "
+             "the data completeness of the original dataset.")
 
     if 'tags' in st.session_state:
         tags = st.session_state['tags']

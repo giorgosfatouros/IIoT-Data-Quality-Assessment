@@ -9,6 +9,7 @@ def show():
 
     if 'readings' in st.session_state:
         readings = st.session_state['readings']
+        readings = readings[[col for col in readings.columns if 'alarm' not in col]]
 
         st.header("General Information")
         if 'tags' in st.session_state:
