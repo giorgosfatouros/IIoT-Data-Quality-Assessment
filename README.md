@@ -1,65 +1,78 @@
 # IIoT Data Quality Assessment App
 
-This project is a Streamlit-based application designed for assessing the data quality of IIoT (Industrial Internet of Things) sensor data. It allows users to upload sensor data, optionally persist it in a database for analytics, and assess data quality metrics.
+This project is a Streamlit-based application designed to analyze and assess the quality of data collected from Industrial Internet of Things (IIoT) devices. 
+## Dependencies 
+This app is design to read data from [LeanXcale database](https://www.leanxcale.com/real-time-analytics), thus the data used for analysis should be stored in this database.
+
+## Features 
+- **Data Loading**: Import raw data or connect to the LeanXcale (LXS) database via Kafka for real-time data streaming. 
+- **LeanXscale Integration**: Leverage online aggregates and incremental analytics for fast and efficient data processing. 
+- **Data Annotation**: The aggregated data are automatically annotated based on the nominal sensor values and can be exported to for further exploitation. 
+- **Data Visualization**: Visualize the loaded and aggregated data to understand its structure and quality. 
+- **Missing Values Analysis**: Detect and handle missing values in the raw sensor dataset, utilizing aggregated data. 
+- **Invalid Values Analysis**: Identify and analyze invalid readings or alarms from your sensors. 
+- **Data Quality**: Perform comprehensive data quality assessments, including metrics and visualizations.
 
 ## Setup
 
-Before running the app, you need to set up a configuration file and a database. Follow these steps to set up your project:
+### Prerequisites
+- Python 3.8 
+- Docker
+- LeanXscale docker service
 
-### 1. Install Dependencies
+### Step 1: Clone the Project
+```bash
+git clone https://github.com/giorgosfatouros/IIoT-Data-Quality-Assessment.git
+cd iiot-data-quality-assessment-app
+```
 
-Ensure you have Python and [Poetry](https://python-poetry.org/docs/#installation) installed on your system. Poetry handles dependency management and virtual environments. Follow the steps below to set up your project dependencies:
+### Step 2: Start LeanXcale docker service (if needed)
+```bash
+docker run --name leanxcaledb-service --env KVPEXTERNALIP='leanxcaledb-service!9800' -p 0.0.0.0:1529:1529 -d ferrari 
+```
+For Installing LeanXscale refer here: https://gitlab.gftinnovation.eu/fame/leanxcaledb.git
 
-1. **Install Poetry**: If you haven't installed Poetry yet, follow the [official installation guide](https://python-poetry.org/docs/#installation).
+### Local Installation
 
-2. **Set Up the Project**: Navigate to the project directory in your terminal.
+1. Navigate to the project directory:
 
-3. **Install Dependencies**: Run the following command to install the project dependencies specified in the `pyproject.toml` file:
+```bash
+cd iiot-data-quality-assessment-app
 
+```
+2. Create and activate a virtual environment:
+```bash
+python -m venv iot
+source iot/bin/activate
+```
 
-
+3. Install the LeanXcale Python client and project dependencies:
 ```bash
 pip install pyLeanxcale-1.9.13_latest-py3-none-any.whl 
-
-poetry install
-
 ```
-
-### 2. Configuration File
-Create a `config-sensor.yaml` file in the root directory of your project. This file will describe the structure of the data to be uploaded. Here is an example configuration:
-``` 
-database_uri: "sqlite:///iiot_data.db"
-sensor_data:
-  table_name: "sensor_data"
-  columns:
-    - name: "timestamp"
-      type: "DateTime"
-      format: "%Y-%m-%d %H:%M:%S"
-    - name: "sensor_id"
-      type: "String"
-    - name: "value"
-      type: "Float"
-```
-
-Adjust the `database_uri` and the structure under `sensor_data` to match your requirements. The type can be one of Integer, String, Float, or DateTime. If DateTime is used, specify the format to correctly parse the dates.
-
-### 3. Running the App
-
-First start if stopped the LeanXscale Datastore
+4. Install any additional requirements:
 ```bash
-docker restart leanxcaledb-service
+pip install requirements.txt
 ```
-To run the app, navigate to the project directory in your terminal and run:
-
+#### Step 4: Running the App
+To run the app, navigate to the project directory in your terminal and execute:
 ```bash
 streamlit run app.py
 ```
+### Docker Installation 
 
-### 4. Uploading Data
-Follow the instructions within the app to upload your sensor data. The configuration in `config-sensor.yaml` will determine how the data is processed and stored.
+```bash
+docker-compose up -d
+```
 
-### 5. Extending the App
-To add new features or modify the app, refer to the Streamlit documentation and the SQLAlchemy ORM documentation for guidance. The modular design makes it easy to extend and customize for your specific needs.
+### 4. Usage 
+Go to: http://www.localhost:8501
+Follow the instructions within the app to upload your sensor data.
+ 1. **Data Loading**: Navigate to the **Data Loading** page to select the data table (machine) for analysis.
+ 2. **Data Visualization**: Use the **Data Visualization** page to explore the data through various visualizations.
+ 3. **Missing Values Analysis**: Go to the **Missing Values Analysis** to get insights for missing values into the original/raw data.
+ 4. **Invalid Values Analysis**: The **Invalid Values Analysis** page helps you identify and understand invalid readings from your sensor data.
+ 5. **Data Quality**: Access the **Data Quality** page for a detailed assessment of your data's quality, including completeness, accuracy, and consistency.
 
 ### Acknowledgements
 The project has received funding from the European Union’s funded Project HEU FAME under Grant Agreement No. 101092639.
