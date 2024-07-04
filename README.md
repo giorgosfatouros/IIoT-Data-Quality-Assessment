@@ -1,4 +1,4 @@
-# IIoT Data Quality Assessment App
+# IIoT Data Quality Assessment Service
 <img src="static/logo.webp" alt="IIoT Data Quality Assessment App Icon" width="200" style="align:left;"/>
 
 A service designed to analyze and assess the quality of high frequency data collected from Industrial Internet of Things (IIoT) sensors, efficiently. 
