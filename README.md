@@ -126,5 +126,5 @@ Follow the instructions within the app to upload your sensor data.
  5. **Data Quality**: Access the **Data Quality** page for a detailed assessment of your data's quality, including completeness, accuracy, and consistency.
 
 ### Acknowledgements
-The project has received funding from the European Union’s funded Project HEU FAME under Grant Agreement No. 101092639.
+The project has received funding from the European Union’s funded **Project HEU FAME** under Grant Agreement No. **101092639**.
 
