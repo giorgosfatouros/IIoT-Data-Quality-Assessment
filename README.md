@@ -1,7 +1,7 @@
 # IIoT Data Quality Assessment App
 <img src="static/logo.webp" alt="IIoT Data Quality Assessment App Icon" width="200" style="align:left;"/>
 
-A service designed to analyze and assess the quality of high frequency data collected from Industrial Internet of Things (IIoT) sensors, efficiently.## Dependencies 
+A service designed to analyze and assess the quality of high frequency data collected from Industrial Internet of Things (IIoT) sensors, efficiently. 
 This app reads multiple sensor readings that monitor a machine from [LeanXcale database](https://www.leanxcale.com/real-time-analytics) supporting energy efficient and incremental analytics.
 
 ## Features 
