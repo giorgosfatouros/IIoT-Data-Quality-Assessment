@@ -71,13 +71,14 @@ Provide a `csv` file describing the sensors. The file should adhere to the follo
 | 22PI102 | SEAL OIL MAIN PUMP PRESSURE             | K-2201 | 6             | NaN            | Down           | min              | Kgf/cm2           | Pressure |
 | 22PI103 | CONTROL OIL HEADER PRESSURE             | K-2201 | 5             | NaN            | Down
 
-### Step 1: Clone the Project
+## Installation 
+### Clone the Project
 ```bash
 git clone https://github.com/giorgosfatouros/IIoT-Data-Quality-Assessment.git
 cd iiot-data-quality-assessment-app
 ```
 
-### Step 2: Start LeanXcale docker service (if needed)
+### Start LeanXcale docker service (if needed)
 ```bash
 docker run --name leanxcaledb-service --env KVPEXTERNALIP='leanxcaledb-service!9800' -p 0.0.0.0:1529:1529 -d ferrari 
 ```
@@ -105,7 +106,7 @@ pip install pyLeanxcale-1.9.13_latest-py3-none-any.whl
 ```bash
 pip install requirements.txt
 ```
-#### Step 4: Running the App
+#### Running the App
 To run the app, navigate to the project directory in your terminal and execute:
 ```bash
 streamlit run app.py
