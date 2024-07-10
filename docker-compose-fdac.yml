@@ -1,0 +1,29 @@
+version: '3.1'
+
+services:
+  leanxcaledb-service:
+    image: harbor.gftinnovation.eu/fame/leanxcaledb-fdac-demo:1.9.13
+    container_name: leanxcaledb-service
+    restart: unless-stopped
+    ports:
+      - 2181:2181
+      - 1529:1529  
+    environment:
+      - KVPEXTERNALIP=leanxcaledb-service!9800
+  pdt_backend:
+    image: pdt-backend:latest
+    container_name: pdt_backend
+    restart: unless-stopped
+    ports:
+      - 54735:54735
+    depends_on:
+      - datastore
+    links:
+      - datastore
+    environment:
+      - DATASTORE_HOST=datastore
+      - KEYSTORE_PATH=/tmp/pdt-backend.keystore.jks
+      - swagger_path=/tmp/
+      - USEIP=yes
+      - ADVERTISED_DB_URL=90.147.170.166
+      - ADVERTISED_PDT_URL=http://90.147.102.215:54735
