@@ -11,3 +11,6 @@ export DB_NAME=MOH
 
 # Run Docker Compose
 docker-compose up
+
+
+docker push gfatouros/fame-data-quality:latest

@@ -1,27 +1,46 @@
 # IIoT Data Quality Assessment Service
 <img src="static/logo.webp" alt="IIoT Data Quality Assessment App Icon" width="200" style="align:left;"/>
 
-A service designed to analyze and assess the quality of high frequency data collected from Industrial Internet of Things (IIoT) sensors, efficiently. 
-This app reads multiple sensor readings that monitor a machine from [LeanXcale database](https://www.leanxcale.com/real-time-analytics) supporting energy efficient and incremental analytics.
+A modern full-stack web application designed to analyze and assess the quality of high frequency data collected from Industrial Internet of Things (IIoT) sensors, efficiently. 
+
+This application consists of:
+- **FastAPI Backend**: RESTful API for data processing and analytics
+- **React Frontend**: Modern, responsive dashboard interface
+- **LeanXcale Integration**: Connects to [LeanXcale database](https://www.leanxcale.com/real-time-analytics) supporting energy efficient and incremental analytics
 
 ## Features 
-- **Data Loading**: Import raw data or connect to the LeanXcale (LXS) database via Kafka for real-time data streaming. 
-- **LeanXscale Integration**: Leverage online aggregates and incremental analytics for fast and efficient data processing. 
-- **Data Annotation**: The aggregated data are automatically annotated based on the nominal sensor values and can be exported to for further exploitation. 
-- **Data Visualization**: Visualize the loaded and aggregated data to understand its structure and quality. 
-- **Missing Values Analysis**: Detect and handle missing values in the raw sensor dataset, utilizing aggregated data. 
-- **Invalid Values Analysis**: Identify and analyze invalid readings or alarms from your sensors. 
-- **Data Quality**: Perform comprehensive data quality assessments, including metrics and visualizations.
+- **Modern Web Interface**: React-based responsive dashboard with professional UI/UX
+- **Data Loading**: Interactive data source selection and preprocessing with real-time previews
+- **LeanXcale Integration**: Leverage online aggregates and incremental analytics for fast and efficient data processing
+- **Advanced Analytics**: Comprehensive visualization analytics including:
+  - Summary statistics and correlation analysis
+  - Time series analysis with trend detection
+  - Histogram and density plots
+  - Box plots and seasonal decomposition
+  - Anomaly detection using statistical methods
+- **Data Visualization**: Interactive charts and graphs using modern charting libraries
+- **Missing Values Analysis**: Detect and handle missing values in the raw sensor dataset
+- **Invalid Values Analysis**: Identify and analyze invalid readings or alarms from sensors
+- **Data Quality Assessment**: Comprehensive data quality metrics and visualizations
+- **RESTful API**: Well-documented FastAPI backend with automatic OpenAPI documentation
 
-## Setup
-### Prerequisites
-- Python 3.8 
-- Docker
-- Energy Efficient Incremental Analytics (LeanXscale docker service)
-  - https://docs.leanxcale.com/leanxcale/v2.3/sql_reference/sql-ddl.html#_create_online_aggregate_and_drop_online_aggregate_statements
-  - https://blog.leanxcale.com/hands-on/online-aggregations-in-leanxcale/
-- IoT Fast Data Importer for KPI Monitoring (LeanXscale Data Importer)
-- Description of Sensors
+## Architecture
+
+```
+┌─────────────────┐    HTTP/REST     ┌──────────────────┐    SQLAlchemy    ┌─────────────────┐
+│   React Frontend│ ◄──────────────► │  FastAPI Backend │ ◄──────────────► │ LeanXcale DB    │
+│   (Port 5173)   │                  │   (Port 8000)    │                  │  (Port 1529)    │
+└─────────────────┘                  └──────────────────┘                  └─────────────────┘
+```
+
+## Prerequisites
+- **Python 3.9+** for backend development
+- **Node.js 18+** for frontend development  
+- **Docker** for LeanXcale database
+- **LeanXcale Database** running as Docker container
+  - [Online Aggregations Documentation](https://docs.leanxcale.com/leanxcale/v2.3/sql_reference/sql-ddl.html#_create_online_aggregate_and_drop_online_aggregate_statements)
+  - [Hands-on Tutorial](https://blog.leanxcale.com/hands-on/online-aggregations-in-leanxcale/)
+- **Sensor Metadata** in CSV format (see Data Description Requirements below)
 
 
 ### Data Description Requirements

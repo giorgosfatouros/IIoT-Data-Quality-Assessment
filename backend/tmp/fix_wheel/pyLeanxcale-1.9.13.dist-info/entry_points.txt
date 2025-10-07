@@ -1,0 +1,3 @@
+[sqlalchemy.dialects]
+leanxcale = pyLeanxcale.sqlalchemy_leanxcale:LeanxcaleDialect
+

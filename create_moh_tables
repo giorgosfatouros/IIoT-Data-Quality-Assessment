@@ -1,0 +1,150 @@
+CREATE TABLE KT2201 (
+"timestamp" TIMESTAMP,
+col22si101 DOUBLE,
+col22vi01 DOUBLE,
+col22vi04 DOUBLE,
+col22vi06 DOUBLE,
+col22vi08 DOUBLE,
+col22pi69 DOUBLE,
+col22pi70 DOUBLE,
+col22zi10 DOUBLE,
+col22zi09 DOUBLE,
+col22zi11 DOUBLE,
+PRIMARY KEY ("timestamp")
+)
+
+CREATE TABLE K3301 (
+"timestamp" TIMESTAMP,
+col33vi603 DOUBLE,
+col33vi601 DOUBLE,
+col33vi602 DOUBLE,
+col33vi604 DOUBLE,
+col33si501a DOUBLE,
+col33pi222 DOUBLE,
+col33pi601 DOUBLE,
+PRIMARY KEY("timestamp")
+)
+
+CREATE TABLE K5700 ( 
+"timestamp" timestamp,
+col57ti030 DOUBLE,
+col57ti003 DOUBLE,
+col57pic004 DOUBLE,
+col57pi005 DOUBLE,
+col57fi001a DOUBLE,
+col57pi014 DOUBLE,
+col57el1003 DOUBLE,
+PRIMARY KEY ("timestamp")
+)
+
+
+CREATE ONLINE AGGREGATE K3301_HOURS AS
+    min(col33vi603) AS min_col33vi603,
+    max(col33vi603) AS max_col33vi603,
+    sum(col33vi603) AS sum_col33vi603,
+    count(col33vi603) AS count_col33vi603,
+    count(col33vi603_isvalid) AS count_col33vi603_isvalid,
+
+    min(col33vi601) AS min_col33vi601,
+    max(col33vi601) AS max_col33vi601,
+    sum(col33vi601) AS sum_col33vi601,
+    count(col33vi601) AS count_col33vi601,
+    count(col33vi601_isvalid) AS count_col33vi601_isvalid,
+
+    min(col33vi602) AS min_col33vi602,
+    max(col33vi602) AS max_col33vi602,
+    sum(col33vi602) AS sum_col33vi602,
+    count(col33vi602) AS count_col33vi602,
+    count(col33vi602_isvalid) AS count_col33vi602_isvalid,
+
+    min(col33vi604) AS min_col33vi604,
+    max(col33vi604) AS max_col33vi604,
+    sum(col33vi604) AS sum_col33vi604,
+    count(col33vi604) AS count_col33vi604,
+    count(col33vi604_isvalid) AS count_col33vi604_isvalid,
+
+    min(col33si501a) AS min_col33si501a,
+    max(col33si501a) AS max_col33si501a,
+    sum(col33si501a) AS sum_col33si501a,
+    count(col33si501a) AS count_col33si501a,
+    count(col33si501a_isvalid) AS count_col33si501a_isvalid,
+
+    min(col33pi222) AS min_col33pi222,
+    max(col33pi222) AS max_col33pi222,
+    sum(col33pi222) AS sum_col33pi222,
+    count(col33pi222) AS count_col33pi222,
+    count(col33pi222_isvalid) AS count_col33pi222_isvalid,
+
+    min(col33pi601) AS min_col33pi601,
+    max(col33pi601) AS max_col33pi601,
+    sum(col33pi601) AS sum_col33pi601,
+    count(col33pi601) AS count_col33pi601,
+    count(col33pi601_isvalid) AS count_col33pi601_isvalid
+
+FROM K3301
+GROUP BY CTUMBLE("timestamp", INTERVAL '1' HOUR, TIMESTAMP '1970-01-01 00:00:00') "timestamp";
+
+
+CREATE ONLINE AGGREGATE KT2201_HOURS AS
+    min(col22si101) AS min_col22si101,
+    max(col22si101) AS max_col22si101,
+    sum(col22si101) AS sum_col22si101,
+    count(col22si101) AS count_col22si101,
+    count(col22si101_isvalid) AS count_col22si101_isvalid,
+    
+    min(col22vi01) AS min_col22vi01,
+    max(col22vi01) AS max_col22vi01,
+    sum(col22vi01) AS sum_col22vi01,
+    count(col22vi01) AS count_col22vi01,
+    count(col22vi01_isvalid) AS count_col22vi01_isvalid,
+    
+    min(col22vi04) AS min_col22vi04,
+    max(col22vi04) AS max_col22vi04,
+    sum(col22vi04) AS sum_col22vi04,
+    count(col22vi04) AS count_col22vi04,
+    count(col22vi04_isvalid) AS count_col22vi04_isvalid,
+
+    min(col22vi06) AS min_col22vi06,
+    max(col22vi06) AS max_col22vi06,
+    sum(col22vi06) AS sum_col22vi06,
+    count(col22vi06) AS count_col22vi06,
+    count(col22vi06_isvalid) AS count_col22vi06_isvalid,
+    
+    min(col22vi08) AS min_col22vi08,
+    max(col22vi08) AS max_col22vi08,
+    sum(col22vi08) AS sum_col22vi08,
+    count(col22vi08) AS count_col22vi08,
+    count(col22vi08_isvalid) AS count_col22vi08_isvalid,
+
+    min(col22pi69) AS min_col22pi69,
+    max(col22pi69) AS max_col22pi69,
+    sum(col22pi69) AS sum_col22pi69,
+    count(col22pi69) AS count_col22pi69,
+    count(col22pi69_isvalid) AS count_col22pi69_isvalid,
+
+    min(col22pi70) AS min_col22pi70,
+    max(col22pi70) AS max_col22pi70,
+    sum(col22pi70) AS sum_col22pi70,
+    count(col22pi70) AS count_col22pi70,
+    count(col22pi70_isvalid) AS count_col22pi70_isvalid,
+
+    min(col22zi10) AS min_col22zi10,
+    max(col22zi10) AS max_col22zi10,
+    sum(col22zi10) AS sum_col22zi10,
+    count(col22zi10) AS count_col22zi10,
+    count(col22zi10_isvalid) AS count_col22zi10_isvalid,
+
+    min(col22zi09) AS min_col22zi09,
+    max(col22zi09) AS max_col22zi09,
+    sum(col22zi09) AS sum_col22zi09,
+    count(col22zi09) AS count_col22zi09,
+    count(col22zi09_isvalid) AS count_col22zi09_isvalid,
+
+    min(col22zi11) AS min_col22zi11,
+    max(col22zi11) AS max_col22zi11,
+    sum(col22zi11) AS sum_col22zi11,
+    count(col22zi11) AS count_col22zi11,
+    count(col22zi11_isvalid) AS count_col22zi11_isvalid
+
+FROM KT2201
+GROUP BY CTUMBLE("timestamp", INTERVAL '1' HOUR, TIMESTAMP '1970-01-01 00:00:00') "timestamp";
