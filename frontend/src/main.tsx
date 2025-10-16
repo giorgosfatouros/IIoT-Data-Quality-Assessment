@@ -10,6 +10,7 @@ import DataVisualization from './pages/DataVisualization'
 import MissingValues from './pages/MissingValues'
 import InvalidValues from './pages/InvalidValues'
 import DataQuality from './pages/DataQuality'
+import DQAAgent from './pages/DQAAgent'
 
 const router = createBrowserRouter([
   {
@@ -22,6 +23,7 @@ const router = createBrowserRouter([
       { path: 'missing-values', element: <MissingValues /> },
       { path: 'invalid-values', element: <InvalidValues /> },
       { path: 'data-quality', element: <DataQuality /> },
+      { path: 'dqa-agent', element: <DQAAgent /> },
     ],
   },
 ])

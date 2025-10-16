@@ -32,6 +32,7 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
     { to: '/missing-values', label: 'Missing Values' },
     { to: '/invalid-values', label: 'Invalid Values' },
     { to: '/data-quality', label: 'Data Quality' },
+    { to: '/dqa-agent', label: 'DQA Agent' },
   ]
   
   return (

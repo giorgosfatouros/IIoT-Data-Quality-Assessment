@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Download, Loader2, AlertCircle, CheckCircle, Database, Settings, FileText, Zap, TrendingUp, Upload, CloudUpload, Plus } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { ChevronDown, ChevronRight, Download, Loader2, AlertCircle, CheckCircle, Database, Settings, FileText, Zap, TrendingUp, Upload, CloudUpload, Plus, X, FileCheck } from 'lucide-react'
+import Footer from '../components/Footer'
 
 interface TableData {
   columns: string[]
@@ -36,12 +37,27 @@ export default function DataLoading() {
   const [dataSource, setDataSource] = useState<'database' | 'upload' | ''>('')
   const [tagSearch, setTagSearch] = useState<string>('')
   const [dataSearch, setDataSearch] = useState<string>('')
+  
+  // Upload-related state
+  const [uploadDataFile, setUploadDataFile] = useState<File | null>(null)
+  const [uploadTagsFile, setUploadTagsFile] = useState<File | null>(null)
+  const [uploadTableName, setUploadTableName] = useState<string>('')
+  const [uploadMachineType, setUploadMachineType] = useState<string>('AUTO')
+  const [uploadValidation, setUploadValidation] = useState<any>(null)
+  const [isValidating, setIsValidating] = useState<boolean>(false)
+  const [isUploading, setIsUploading] = useState<boolean>(false)
+  const [uploadJobId, setUploadJobId] = useState<string>('')
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const [uploadStatus, setUploadStatus] = useState<string>('')
+  const [importAvailable, setImportAvailable] = useState<boolean>(false)
+  const [importHealthMessage, setImportHealthMessage] = useState<string>('')
 
   const API_BASE = 'http://localhost:8000'
 
   // Fetch tables on component mount
   useEffect(() => {
     fetchTables()
+    checkImportHealth()
   }, [])
 
   // Fetch aggregation frequency when table is selected
@@ -128,6 +144,176 @@ export default function DataLoading() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+  }
+
+  // Check if import service is available
+  const checkImportHealth = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/import/health`)
+      const health = await response.json()
+      setImportAvailable(health.docker_available && health.importer_image_available)
+      setImportHealthMessage(health.message)
+    } catch (err) {
+      console.error('Import health check failed:', err)
+      setImportAvailable(false)
+      setImportHealthMessage('Import service unavailable')
+    }
+  }
+
+  // Handle file selection
+  const handleDataFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setUploadDataFile(e.target.files[0])
+      setUploadValidation(null)
+    }
+  }
+
+  const handleTagsFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setUploadTagsFile(e.target.files[0])
+      setUploadValidation(null)
+    }
+  }
+
+  // Validate files before upload
+  const validateUploadFiles = async () => {
+    if (!uploadDataFile || !uploadTagsFile) {
+      setError('Please select both data and tags files')
+      return
+    }
+
+    setIsValidating(true)
+    setError('')
+
+    try {
+      const formData = new FormData()
+      formData.append('data_file', uploadDataFile)
+      formData.append('tags_file', uploadTagsFile)
+
+      const response = await fetch(`${API_BASE}/import/validate`, {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error('Validation request failed')
+      }
+
+      const validation = await response.json()
+      setUploadValidation(validation)
+
+      if (!validation.can_proceed) {
+        const errors = [
+          ...validation.data_file.errors,
+          ...validation.tags_file.errors
+        ]
+        setError(`Validation failed: ${errors.join(', ')}`)
+      } else {
+        // Set suggested table name if not already set
+        if (!uploadTableName && validation.suggested_table_name) {
+          setUploadTableName(validation.suggested_table_name)
+        }
+      }
+    } catch (err) {
+      setError('Validation error: ' + (err as Error).message)
+    } finally {
+      setIsValidating(false)
+    }
+  }
+
+  // Upload and start import
+  const startImport = async () => {
+    if (!uploadDataFile || !uploadTagsFile || !uploadTableName) {
+      setError('Please provide all required information')
+      return
+    }
+
+    if (uploadValidation && !uploadValidation.can_proceed) {
+      setError('Please fix validation errors before importing')
+      return
+    }
+
+    setIsUploading(true)
+    setError('')
+    setUploadProgress(0)
+
+    try {
+      const formData = new FormData()
+      formData.append('data_file', uploadDataFile)
+      formData.append('tags_file', uploadTagsFile)
+      formData.append('table_name', uploadTableName)
+      formData.append('machine_type', uploadMachineType)
+
+      const response = await fetch(`${API_BASE}/import/upload`, {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Upload failed')
+      }
+
+      const job = await response.json()
+      setUploadJobId(job.job_id)
+      setUploadStatus(job.status)
+
+      // Start polling for status
+      pollImportStatus(job.job_id)
+    } catch (err) {
+      setError('Upload error: ' + (err as Error).message)
+      setIsUploading(false)
+    }
+  }
+
+  // Poll import status
+  const pollImportStatus = async (jobId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/import/status/${jobId}`)
+      
+      if (!response.ok) {
+        throw new Error('Status check failed')
+      }
+
+      const status = await response.json()
+      setUploadStatus(status.status)
+      setUploadProgress(status.progress_percentage || 0)
+
+      if (status.status === 'completed') {
+        setIsUploading(false)
+        setUploadProgress(100)
+        // Refresh tables list
+        fetchTables()
+        // Optionally load the new table
+        if (status.table_name) {
+          setSelectedTable(status.table_name)
+        }
+      } else if (status.status === 'failed') {
+        setIsUploading(false)
+        setError(status.error_message || 'Import failed')
+      } else if (status.status === 'cancelled') {
+        setIsUploading(false)
+        setError('Import was cancelled')
+      } else {
+        // Continue polling
+        setTimeout(() => pollImportStatus(jobId), 3000)
+      }
+    } catch (err) {
+      setError('Status check error: ' + (err as Error).message)
+      setIsUploading(false)
+    }
+  }
+
+  // Reset upload form
+  const resetUploadForm = () => {
+    setUploadDataFile(null)
+    setUploadTagsFile(null)
+    setUploadTableName('')
+    setUploadMachineType('AUTO')
+    setUploadValidation(null)
+    setUploadJobId('')
+    setUploadProgress(0)
+    setUploadStatus('')
   }
 
 
@@ -252,12 +438,9 @@ export default function DataLoading() {
             </div>
           </div>
 
-          {/* Upload Option - Placeholder */}
+          {/* Upload Option - Now Functional */}
           <div 
-            onClick={() => {
-              // Placeholder - will be implemented by PI
-              alert('Data upload feature will be implemented by the PI. This will allow users to upload CSV, Excel, and JSON files for processing.')
-            }}
+            onClick={() => setDataSource('upload')}
             className={`bg-gray-800/80 rounded-lg p-6 border border-dashed transition-all cursor-pointer transform hover:scale-105 relative ${
               dataSource === 'upload' 
                 ? 'border-orange-500 ring-2 ring-orange-500/20 bg-orange-900/20' 
@@ -270,46 +453,51 @@ export default function DataLoading() {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-white">Upload New Data</h3>
-                <p className="text-gray-400 text-sm">Import CSV files or sensor data exports</p>
+                <p className="text-gray-400 text-sm">Import CSV files via moh-importer</p>
               </div>
               {dataSource === 'upload' && (
                 <CheckCircle className="text-orange-400 ml-auto" size={20} />
               )}
             </div>
             
-            {/* Upload Area */}
-            <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-orange-500 transition-colors group">
-              <Upload className="mx-auto text-gray-500 group-hover:text-orange-400 mb-3 transition-colors" size={32} />
-              <p className="text-gray-400 group-hover:text-gray-300 mb-2">Drop files here or click to browse</p>
-              <p className="text-xs text-gray-500">Supports CSV, Excel, and JSON formats</p>
-            </div>
-
             <div className="mt-4 space-y-2 text-sm text-gray-300">
-              <p>• Upload sensor data files</p>
-              <p>• Automatic format detection</p>
-              <p>• Data validation and preprocessing</p>
+              <p>• Upload sensor data CSV files</p>
+              <p>• Automatic machine type detection</p>
+              <p>• Real-time validation and import</p>
             </div>
 
-            {/* Coming Soon Badge */}
-            <div className="absolute top-4 right-4 bg-orange-600 text-white text-xs px-3 py-1 rounded-full font-medium">
-              Coming Soon
-            </div>
+            {/* Status Badge */}
+            {importAvailable ? (
+              <div className="absolute top-4 right-4 bg-green-600 text-white text-xs px-3 py-1 rounded-full font-medium flex items-center gap-1">
+                <CheckCircle size={12} />
+                Ready
+              </div>
+            ) : (
+              <div className="absolute top-4 right-4 bg-yellow-600 text-white text-xs px-3 py-1 rounded-full font-medium flex items-center gap-1">
+                <AlertCircle size={12} />
+                Setup Required
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Upload Instructions - Placeholder */}
-        <div className="mt-6 bg-orange-900/20 border border-orange-600/30 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <Plus className="text-orange-400 flex-shrink-0 mt-0.5" size={16} />
-            <div>
-              <p className="text-orange-200 font-medium text-sm">Data Upload Feature</p>
-              <p className="text-orange-300/80 text-xs mt-1">
-                This functionality will be implemented by the PI to allow users to upload and process their own sensor data files. 
-                The system will support various formats and provide automatic data validation and preprocessing.
-              </p>
+        {/* Import Health Status */}
+        {!importAvailable && (
+          <div className="mt-6 bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="text-yellow-400 flex-shrink-0 mt-0.5" size={16} />
+              <div>
+                <p className="text-yellow-200 font-medium text-sm">Import Service Status</p>
+                <p className="text-yellow-300/80 text-xs mt-1">
+                  {importHealthMessage || 'Docker or moh-importer image not available. Please ensure Docker is running and the image is built.'}
+                </p>
+                <p className="text-yellow-300/80 text-xs mt-2">
+                  Build command: <code className="bg-black/30 px-2 py-1 rounded">cd /home/george/moh-importer-main && docker build -t moh-importer:latest .</code>
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Step 1: Configuration */}
@@ -363,8 +551,8 @@ export default function DataLoading() {
         </div>
       )}
 
-      {/* Upload Configuration Placeholder */}
-      {dataSource === 'upload' && (
+      {/* Upload Configuration - Now Functional */}
+      {dataSource === 'upload' && importAvailable && (
         <div className="transition-all duration-500">
           <div className="bg-gradient-to-r from-gray-800 to-gray-700 rounded-xl p-6 border border-gray-600 shadow-xl">
             <div className="flex items-center gap-3 mb-6">
@@ -372,30 +560,305 @@ export default function DataLoading() {
                 <Upload className="text-white" size={24} />
               </div>
               <div>
-                <h2 className="text-2xl font-semibold text-white">Step 1: Upload Configuration</h2>
-                <p className="text-gray-300">Configure your data upload settings</p>
+                <h2 className="text-2xl font-semibold text-white">Step 1: Upload and Import Data</h2>
+                <p className="text-gray-300">Select CSV files and configure import settings</p>
               </div>
             </div>
 
-            <div className="bg-orange-900/20 border border-orange-600/30 rounded-lg p-6 text-center">
-              <CloudUpload className="mx-auto text-orange-400 mb-4" size={48} />
-              <h3 className="text-lg font-semibold text-white mb-2">Upload Feature Coming Soon</h3>
-              <p className="text-orange-200 mb-4">
-                The PI will implement file upload functionality including:
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-orange-300">
-                <div className="space-y-2">
-                  <p>• CSV file parsing and validation</p>
-                  <p>• Excel spreadsheet support</p>
-                  <p>• JSON data format handling</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Data File Upload */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-300">
+                  Sensor Data CSV File *
+                </label>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleDataFileChange}
+                    className="hidden"
+                    id="data-file-input"
+                  />
+                  <label
+                    htmlFor="data-file-input"
+                    className="flex items-center justify-center gap-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white cursor-pointer hover:bg-gray-600 transition-all"
+                  >
+                    {uploadDataFile ? (
+                      <>
+                        <FileCheck size={20} className="text-green-400" />
+                        <span className="text-sm truncate">{uploadDataFile.name}</span>
+                        <X
+                          size={16}
+                          className="ml-auto text-gray-400 hover:text-red-400"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setUploadDataFile(null)
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <CloudUpload size={20} />
+                        <span>Select Data File</span>
+                      </>
+                    )}
+                  </label>
                 </div>
-                <div className="space-y-2">
-                  <p>• Automatic schema detection</p>
-                  <p>• Data quality validation</p>
-                  <p>• Progress tracking and error handling</p>
+                <p className="text-xs text-gray-400">
+                  CSV with timestamp and sensor readings
+                </p>
+              </div>
+
+              {/* Tags File Upload */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-300">
+                  Tags/Thresholds CSV File *
+                </label>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleTagsFileChange}
+                    className="hidden"
+                    id="tags-file-input"
+                  />
+                  <label
+                    htmlFor="tags-file-input"
+                    className="flex items-center justify-center gap-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white cursor-pointer hover:bg-gray-600 transition-all"
+                  >
+                    {uploadTagsFile ? (
+                      <>
+                        <FileCheck size={20} className="text-green-400" />
+                        <span className="text-sm truncate">{uploadTagsFile.name}</span>
+                        <X
+                          size={16}
+                          className="ml-auto text-gray-400 hover:text-red-400"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setUploadTagsFile(null)
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <CloudUpload size={20} />
+                        <span>Select Tags File</span>
+                      </>
+                    )}
+                  </label>
                 </div>
+                <p className="text-xs text-gray-400">
+                  CSV with sensor tags and validation rules
+                </p>
               </div>
             </div>
+
+            {/* Configuration Options */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-300">
+                  Target Table Name *
+                </label>
+                <input
+                  type="text"
+                  value={uploadTableName}
+                  onChange={(e) => setUploadTableName(e.target.value.toUpperCase())}
+                  placeholder="e.g., KT2201"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
+                />
+                <p className="text-xs text-gray-400">
+                  {uploadValidation?.suggested_table_name && 
+                    `Suggested: ${uploadValidation.suggested_table_name}`
+                  }
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-300">
+                  Machine Type
+                </label>
+                <select
+                  value={uploadMachineType}
+                  onChange={(e) => setUploadMachineType(e.target.value)}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
+                >
+                  <option value="AUTO">Auto-detect</option>
+                  <option value="KT2201">KT2201</option>
+                  <option value="K3301">K3301</option>
+                  <option value="K5700">K5700</option>
+                </select>
+                <p className="text-xs text-gray-400">
+                  {uploadValidation?.suggested_machine_type &&
+                    `Detected: ${uploadValidation.suggested_machine_type}`
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-4 mt-6">
+              <button
+                onClick={validateUploadFiles}
+                disabled={!uploadDataFile || !uploadTagsFile || isValidating}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 transition-all disabled:cursor-not-allowed"
+              >
+                {isValidating ? (
+                  <>
+                    <Loader2 className="animate-spin" size={20} />
+                    Validating...
+                  </>
+                ) : (
+                  <>
+                    <FileCheck size={20} />
+                    Validate Files
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={startImport}
+                disabled={!uploadDataFile || !uploadTagsFile || !uploadTableName || isUploading || (uploadValidation && !uploadValidation.can_proceed)}
+                className="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 transition-all disabled:cursor-not-allowed"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="animate-spin" size={20} />
+                    Importing... {uploadProgress.toFixed(0)}%
+                  </>
+                ) : (
+                  <>
+                    <CloudUpload size={20} />
+                    Start Import
+                  </>
+                )}
+              </button>
+
+              {(uploadDataFile || uploadTagsFile) && (
+                <button
+                  onClick={resetUploadForm}
+                  disabled={isUploading}
+                  className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 transition-all disabled:cursor-not-allowed"
+                >
+                  <X size={20} />
+                  Reset
+                </button>
+              )}
+            </div>
+
+            {/* Validation Results */}
+            {uploadValidation && (
+              <div className="mt-6 space-y-4">
+                {/* Data File Validation */}
+                <div className={`rounded-lg p-4 border ${
+                  uploadValidation.data_file.is_valid
+                    ? 'bg-green-900/20 border-green-600'
+                    : 'bg-red-900/20 border-red-600'
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    {uploadValidation.data_file.is_valid ? (
+                      <CheckCircle className="text-green-400" size={20} />
+                    ) : (
+                      <AlertCircle className="text-red-400" size={20} />
+                    )}
+                    <h3 className="font-semibold text-white">
+                      Data File: {uploadValidation.data_file.filename}
+                    </h3>
+                  </div>
+                  <div className="text-sm space-y-1">
+                    <p className="text-gray-300">
+                      Rows: {uploadValidation.data_file.row_count?.toLocaleString() || 'N/A'} | 
+                      Columns: {uploadValidation.data_file.column_count || 'N/A'}
+                    </p>
+                    {uploadValidation.data_file.errors.length > 0 && (
+                      <div className="text-red-300">
+                        {uploadValidation.data_file.errors.map((err: string, i: number) => (
+                          <p key={i}>❌ {err}</p>
+                        ))}
+                      </div>
+                    )}
+                    {uploadValidation.data_file.warnings.length > 0 && (
+                      <div className="text-yellow-300">
+                        {uploadValidation.data_file.warnings.map((warn: string, i: number) => (
+                          <p key={i}>⚠️ {warn}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tags File Validation */}
+                <div className={`rounded-lg p-4 border ${
+                  uploadValidation.tags_file.is_valid
+                    ? 'bg-green-900/20 border-green-600'
+                    : 'bg-red-900/20 border-red-600'
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    {uploadValidation.tags_file.is_valid ? (
+                      <CheckCircle className="text-green-400" size={20} />
+                    ) : (
+                      <AlertCircle className="text-red-400" size={20} />
+                    )}
+                    <h3 className="font-semibold text-white">
+                      Tags File: {uploadValidation.tags_file.filename}
+                    </h3>
+                  </div>
+                  <div className="text-sm space-y-1">
+                    <p className="text-gray-300">
+                      Tags: {uploadValidation.tags_file.tag_count?.toLocaleString() || 'N/A'}
+                    </p>
+                    {uploadValidation.tags_file.errors.length > 0 && (
+                      <div className="text-red-300">
+                        {uploadValidation.tags_file.errors.map((err: string, i: number) => (
+                          <p key={i}>❌ {err}</p>
+                        ))}
+                      </div>
+                    )}
+                    {uploadValidation.tags_file.warnings.length > 0 && (
+                      <div className="text-yellow-300">
+                        {uploadValidation.tags_file.warnings.map((warn: string, i: number) => (
+                          <p key={i}>⚠️ {warn}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Overall Status */}
+                {uploadValidation.can_proceed && (
+                  <div className="bg-green-900/20 border border-green-600 rounded-lg p-4">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="text-green-400" size={20} />
+                      <p className="text-green-200 font-medium">
+                        ✅ Validation passed! Ready to import.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Import Progress */}
+            {isUploading && uploadJobId && (
+              <div className="mt-6 bg-blue-900/20 border border-blue-600 rounded-lg p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <Loader2 className="animate-spin text-blue-400" size={20} />
+                  <div>
+                    <p className="text-blue-200 font-medium">Import in Progress</p>
+                    <p className="text-blue-300 text-sm">Job ID: {uploadJobId}</p>
+                    <p className="text-blue-300 text-sm">Status: {uploadStatus}</p>
+                  </div>
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <p className="text-center text-blue-200 text-sm mt-2">
+                  {uploadProgress.toFixed(1)}% Complete
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -787,6 +1250,8 @@ export default function DataLoading() {
           <p className="text-gray-300">Click "Load & Analyze Data" to process your selected table</p>
         </div>
       )}
+      
+      <Footer />
     </div>
   )
 }

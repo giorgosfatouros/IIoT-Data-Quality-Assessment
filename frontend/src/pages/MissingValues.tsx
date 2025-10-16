@@ -14,6 +14,7 @@ import {
   ReferenceLine
 } from 'recharts'
 import SensorSelector from '../components/SensorSelector'
+import Footer from '../components/Footer'
 
 interface MissingInterval {
   start: string
@@ -489,6 +490,8 @@ export default function MissingValues() {
           <p className="text-gray-400">Click "Analyze" to generate missing values statistics</p>
         </div>
       )}
+      
+      <Footer />
     </div>
   )
 }

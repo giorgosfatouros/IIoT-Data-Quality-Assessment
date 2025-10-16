@@ -1,5 +1,6 @@
 import Card from '../components/Card'
-import { Database, BarChart2, AlertTriangle, Activity, CheckCircle } from 'lucide-react'
+import Footer from '../components/Footer'
+import { Database, BarChart2, AlertTriangle, Activity, CheckCircle, Bot } from 'lucide-react'
 
 export default function Home() {
   return (
@@ -19,8 +20,11 @@ export default function Home() {
           <Card title="Missing Values" description="Identify gaps and quantify missing readings." icon={<AlertTriangle size={24} />} to="/missing-values" />
           <Card title="Invalid Values" description="Spot invalid readings and alarms." icon={<Activity size={24} />} to="/invalid-values" />
           <Card title="Data Quality" description="Assess completeness, accuracy and consistency." icon={<CheckCircle size={24} />} to="/data-quality" />
+          <Card title="DQA Agent" description="Chat with AI agent about your sensor data quality." icon={<Bot size={24} />} to="/dqa-agent" />
         </div>
       </section>
+      
+      <Footer />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, ScatterChart, Scatter, Cell, ReferenceLine, ComposedChart } from 'recharts'
 import { XCircle, TrendingUp, AlertCircle, Filter, ChevronDown, ChevronRight, Database, Settings, BarChart3, Activity } from 'lucide-react'
 import SensorSelector from '../components/SensorSelector'
+import Footer from '../components/Footer'
 
 // Analytics API interfaces
 interface InvalidReadingPoint {
@@ -104,6 +105,9 @@ export default function InvalidValues() {
       // Filter to only show HOURS tables (aggregated data)
       const hoursTables = data.filter((table: string) => table.endsWith('_HOURS'))
       setTables(hoursTables)
+      if (hoursTables.length > 0 && !selectedTable) {
+        setSelectedTable(hoursTables[0])
+      }
     } catch (err: any) {
       setError(err.message)
     }
@@ -692,6 +696,8 @@ export default function InvalidValues() {
           <p className="text-gray-400">Select a table and click "Analyze Invalid Values" to begin</p>
         </div>
       )}
+      
+      <Footer />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, AreaChart, Area, ScatterChart, Scatter, Cell } from 'recharts'
 import { ChevronDown, ChevronRight, TrendingUp, BarChart3, Activity, Settings, Database, FileText, Filter, Download, Zap, AlertCircle, CheckCircle, Target, Calendar, Layers } from 'lucide-react'
 import SensorSelector from '../components/SensorSelector'
+import Footer from '../components/Footer'
 
 // Analytics API interfaces
 interface SummaryStatistics {
@@ -185,6 +186,9 @@ export default function DataVisualization() {
         table.toLowerCase().includes('hours')
       )
       setTables(filteredTables)
+      if (filteredTables.length > 0 && !selectedTable) {
+        setSelectedTable(filteredTables[0])
+      }
     } catch (err) {
       setError('Error fetching tables: ' + (err as Error).message)
     }
@@ -1044,6 +1048,8 @@ export default function DataVisualization() {
           <p className="text-gray-400">Select sensors and click "Analyze" to generate advanced analytics</p>
         </div>
       )}
+      
+      <Footer />
     </div>
   )
 }

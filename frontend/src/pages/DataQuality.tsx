@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Shield, Database, TrendingUp, BarChart3, AlertCircle, CheckCircle, XCircle, Activity, AlertTriangle, Calendar, Filter } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import Footer from '../components/Footer'
 
 // Interfaces
 interface SensorDataPoints {
@@ -708,6 +709,8 @@ export default function DataQuality() {
           <p className="text-gray-400">Click "Analyze Quality" to generate data quality assessment</p>
         </div>
       )}
+      
+      <Footer />
     </div>
   )
 }
