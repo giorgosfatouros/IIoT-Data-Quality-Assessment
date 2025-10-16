@@ -8,6 +8,7 @@ export DB_USER=app
 export DB_PASS=app
 export DB_PORT=1529
 export DB_NAME=MOH
+export OPENAI_API_KEY=<YOUR_OPENAI_API_KEY>
 
 # Run Docker Compose
 docker-compose up

@@ -340,21 +340,24 @@ def get_invalid_values_analytics(request: InvalidValuesRequest):
                 detail=f"Table {request.table} does not have the required COUNT and COUNT_ISVALID columns. This endpoint requires aggregated data."
             )
         
-        # Get aggregation frequency to calculate expected readings
-        # For hourly aggregated data with 10-second original frequency:
-        # 3600 seconds / 10 seconds = 360 readings per hour
+        # Expected readings per hour for 10-second frequency data
+        # Original data is collected every 10 SECONDS, so 360 readings per hour (3600/10=360)
+        # _HOURS tables aggregate these 360 readings per hour
         try:
             # Try to infer from timestamps or COUNT columns
             timestamp_col = _get_timestamp_column(raw_df)
-            expected_readings_per_hour = 360  # Default: 10-second frequency
+            expected_readings_per_hour = 360  # Default: 10-second frequency = 360 readings/hour
             
-            # Try to infer from actual COUNT values
+            # Try to infer from actual COUNT values (should be around 360 if data is complete)
             count_cols = [col for col in raw_df.columns if col.startswith('COUNT_COL') and '_ISVALID' not in col]
             if count_cols:
                 # Get the mode (most common) COUNT value
                 count_mode = raw_df[count_cols[0]].mode()
                 if len(count_mode) > 0 and count_mode.iloc[0] > 0:
-                    expected_readings_per_hour = int(count_mode.iloc[0])
+                    inferred = int(count_mode.iloc[0])
+                    # If mode is around 360, use it; otherwise stick with expected 360
+                    if 300 <= inferred <= 400:  # Reasonable range around 360
+                        expected_readings_per_hour = inferred
                     
             if timestamp_col and timestamp_col in raw_df.columns:
                 raw_df[timestamp_col] = pd.to_datetime(raw_df[timestamp_col])
@@ -365,7 +368,7 @@ def get_invalid_values_analytics(request: InvalidValuesRequest):
                     if len(mode_diff) > 0:
                         agg_freq_seconds = int(mode_diff.iloc[0].total_seconds())
                         # If data is aggregated hourly (3600 seconds)
-                        # and we see COUNT=360, then original frequency is 10 seconds
+                        # and original frequency is 10 seconds, we expect COUNT=360
                         if agg_freq_seconds == 3600:  # Hourly aggregation
                             # Keep the inferred value from COUNT columns
                             pass
@@ -451,28 +454,32 @@ def get_missing_values_analytics(request: MissingValuesRequest):
                 detail="Table must contain COUNT_COL* columns (aggregated data). Use *_HOURS tables."
             )
         
-        # Infer expected readings per hour from actual data
-        expected_readings_per_hour = 360  # Default: 10-second frequency
+        # Expected readings per hour for 10-second frequency data
+        # Data is collected every 10 seconds, so 360 readings per hour (3600/10=360)
+        expected_readings_per_hour = 360
+        
+        # Optionally infer from actual data (should be close to 360 if data is complete)
         try:
-            # Try to infer from actual COUNT values
             if count_cols:
                 count_mode = raw_df[count_cols[0]].mode()
                 if len(count_mode) > 0 and count_mode.iloc[0] > 0:
-                    expected_readings_per_hour = int(count_mode.iloc[0])
+                    # Use the mode value if it's reasonable
+                    inferred = int(count_mode.iloc[0])
+                    if 300 <= inferred <= 400:  # Reasonable range around 360
+                        expected_readings_per_hour = inferred
         except Exception as e:
             print(f"Could not infer readings per hour: {e}")
-            expected_readings_per_hour = 360
         
         # Create analyzer
         analyzer = create_missing_values_analyzer()
         
-        # Analyze missing values
+        # Analyze missing values using correct frequency
         result = analyzer.analyze_missing_values(
             df=raw_df,
             table_name=request.table,
             selected_columns=request.columns,
             original_freq_sec=10,  # 10 seconds
-            expected_readings_per_hour=expected_readings_per_hour
+            expected_readings_per_hour=expected_readings_per_hour  # 360 readings per hour
         )
         
         return MissingValuesAnalytics(**result)

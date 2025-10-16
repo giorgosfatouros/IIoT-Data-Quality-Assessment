@@ -9,7 +9,10 @@ import pandas as pd
 
 # Import new modules
 from api.visualization import router as visualization_router
+from api.agent_chat import router as agent_chat_router
+from api.data_import import router as data_import_router
 from models.database import get_engine
+from core.connection_manager import with_retry, execute_with_retry
 
 # Keep existing Pydantic models for backward compatibility
 class TableData(BaseModel):
@@ -42,33 +45,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include new visualization router
+# Include new routers
 app.include_router(visualization_router)
+app.include_router(agent_chat_router)
+app.include_router(data_import_router)
 
 # Helper functions
+@with_retry(max_retries=5, test_connection=True)
 def _fetch_table_dataframe(table: str, limit: int = 1000) -> pd.DataFrame:
-    """Fetch data from database table and return as DataFrame"""
-    try:
-        engine = get_engine()
-        query = f"SELECT * FROM {table} LIMIT {limit}"
+    """Fetch data from database table and return as DataFrame with retry logic"""
+    engine = get_engine()
+    query = f"SELECT * FROM {table} LIMIT {limit}"
+    
+    # Use SQLAlchemy's execute method instead of pandas read_sql for LeanXcale compatibility
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        result = conn.execute(text(query))
         
-        # Use SQLAlchemy's execute method instead of pandas read_sql for LeanXcale compatibility
-        with engine.connect() as conn:
-            from sqlalchemy import text
-            result = conn.execute(text(query))
-            
-            # Get column names
-            columns = result.keys()
-            
-            # Fetch all rows
-            rows = result.fetchall()
-            
-            # Create DataFrame manually
-            df = pd.DataFrame(rows, columns=columns)
+        # Get column names
+        columns = result.keys()
         
-        return df
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching data from table {table}: {str(e)}")
+        # Fetch all rows
+        rows = result.fetchall()
+        
+        # Create DataFrame manually
+        df = pd.DataFrame(rows, columns=columns)
+        
+        # Explicitly close the result to prevent connection issues
+        result.close()
+    
+    return df
 
 def _preprocess_sensor_data(df: pd.DataFrame) -> tuple:
     """Preprocess sensor data to extract sensors and calculate means"""
@@ -107,40 +113,55 @@ def health():
     return {"status": "ok"}
 
 @app.get("/tables", response_model=List[str])
+@with_retry(max_retries=3, test_connection=True)
 def list_tables():
-    try:
-        eng = get_engine()
-        return inspect(eng).get_table_names()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    eng = get_engine()
+    all_tables = inspect(eng).get_table_names()
+    # Filter to only return _HOURS tables (aggregated data)
+    hours_tables = [table for table in all_tables if table.endswith('_HOURS')]
+    return hours_tables
 
 @app.get("/tables/{table_name}")
+@with_retry(max_retries=3, test_connection=True)
 def get_table_info(table_name: str):
-    try:
-        engine = get_engine()
-        inspector = inspect(engine)
-        columns = inspector.get_columns(table_name)
-        return {
-            "table_name": table_name,
-            "columns": [{"name": col["name"], "type": str(col["type"])} for col in columns]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    engine = get_engine()
+    inspector = inspect(engine)
+    columns = inspector.get_columns(table_name)
+    return {
+        "table_name": table_name,
+        "columns": [{"name": col["name"], "type": str(col["type"])} for col in columns]
+    }
 
 @app.get("/data", response_model=TableData)
 def get_data(table: str = Query(...), limit: int = Query(1000)):
     try:
+        # Validate that only _HOURS tables (aggregated data) are used
+        if not table.endswith('_HOURS'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
+            )
+        
         df = _fetch_table_dataframe(table, limit)
         return TableData(
             columns=df.columns.tolist(),
             rows=df.to_dict(orient="records")
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
 
 @app.get("/data/preprocessed", response_model=PreprocessedData)
 def get_preprocessed_data(table: str = Query(...), limit: int = Query(5000)):
     try:
+        # Validate that only _HOURS tables (aggregated data) are used
+        if not table.endswith('_HOURS'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
+            )
+        
         df = _fetch_table_dataframe(table, limit)
         
         # Preprocess the data
@@ -159,21 +180,39 @@ def get_preprocessed_data(table: str = Query(...), limit: int = Query(5000)):
                 rows=processed_df.to_dict(orient="records")
             )
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error preprocessing data: {str(e)}")
 
 @app.get("/sensors", response_model=List[str])
 def get_sensors(table: str = Query(...)):
     try:
+        # Validate that only _HOURS tables (aggregated data) are used
+        if not table.endswith('_HOURS'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
+            )
+        
         df = _fetch_table_dataframe(table, limit=1)
         _, sensors = _preprocess_sensor_data(df)
         return sensors
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/tags", response_model=TagsResponse)
 def get_tags(table: Optional[str] = Query(None), limit: int = Query(2000)):
     try:
+        # Validate table parameter if provided
+        if table and not table.endswith('_HOURS'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
+            )
+        
         # Load tags CSV from backend/data/tags.csv
         backend_dir = os.path.dirname(__file__)
         tags_path = os.path.join(backend_dir, "data", "tags.csv")
@@ -227,6 +266,13 @@ def get_tags(table: Optional[str] = Query(None), limit: int = Query(2000)):
 @app.get("/analytics/aggregation_frequency", response_model=AggregationFrequency)
 def get_aggregation_frequency(table: str = Query(...)):
     try:
+        # Validate that only _HOURS tables (aggregated data) are used
+        if not table.endswith('_HOURS'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
+            )
+        
         df = _fetch_table_dataframe(table, limit=100)
         
         if 'timestamp' not in df.columns:
@@ -251,12 +297,21 @@ def get_aggregation_frequency(table: str = Query(...)):
         else:
             return AggregationFrequency(aggregation_frequency_seconds=None)
             
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating aggregation frequency: {str(e)}")
 
 @app.get("/analytics/missing", response_model=MissingValuesResponse)
 def get_missing_values_analysis(table: str = Query(...), limit: int = Query(5000)):
     try:
+        # Validate that only _HOURS tables (aggregated data) are used
+        if not table.endswith('_HOURS'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
+            )
+        
         df = _fetch_table_dataframe(table, limit)
         
         # Calculate missing values percentage for each column
@@ -272,6 +327,8 @@ def get_missing_values_analysis(table: str = Query(...), limit: int = Query(5000
             total_missing_percentage=total_missing_percentage
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing missing values: {str(e)}")
 

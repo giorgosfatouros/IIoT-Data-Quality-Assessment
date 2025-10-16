@@ -726,16 +726,20 @@ class MissingValuesAnalyzer:
         table_name: str,
         selected_columns: Optional[List[str]] = None,
         original_freq_sec: int = 10,  # 10 seconds original frequency
-        expected_readings_per_hour: int = 360  # 3600/10 = 360 readings per hour
+        expected_readings_per_hour: int = 360  # 3600 seconds / 10 seconds = 360 readings per hour
     ) -> Dict[str, Any]:
         """
-        Analyze missing values in sensor data.
+        Analyze missing values in sensor data from _HOURS aggregated tables.
+        
+        IMPORTANT: Original data is collected every 10 SECONDS.
+        Each hour in the _HOURS table represents 360 expected readings (3600s / 10s = 360).
+        The COUNT_<sensor> column shows how many readings were actually received.
         
         Args:
-            df: DataFrame with timestamp and COUNT_COL* columns
+            df: DataFrame with timestamp and COUNT_COL* columns from _HOURS table
             table_name: Name of the table being analyzed
             selected_columns: Optional list of sensor columns to analyze
-            original_freq_sec: Original data frequency in seconds (default 10)
+            original_freq_sec: Original data frequency in seconds (default 10 = 10 seconds)
             expected_readings_per_hour: Expected readings per aggregated hour (default 360)
         
         Returns:

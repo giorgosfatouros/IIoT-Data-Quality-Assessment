@@ -2,6 +2,10 @@
 
 This README describes how to deploy and run the FastAPI backend locally against a LeanXcale database running in Docker.
 
+## DQA Agent
+
+The backend includes an AI-powered Data Quality Assessment Agent that uses OpenAI's Agents SDK to answer questions about your sensor data. See [QUICKSTART_DQA.md](../QUICKSTART_DQA.md) and [DQA_AGENT_SETUP.md](../DQA_AGENT_SETUP.md) for setup instructions.
+
 ## Prerequisites
 - Python 3.9+ installed on your machine
 - LeanXcale DB running as a Docker container (exposing port 1529)
