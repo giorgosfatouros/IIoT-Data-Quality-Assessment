@@ -295,7 +295,7 @@ def get_sensor_metadata(sensor_name: Optional[str] = None, table_name: Optional[
     try:
         # Load tags CSV
         backend_dir = os.path.dirname(os.path.dirname(__file__))  # Go up to backend/
-        tags_path = os.path.join(backend_dir, "data", "tags.csv")
+        tags_path = os.path.join(backend_dir, "config", "tags.csv")
         
         if not os.path.exists(tags_path):
             return "Sensor metadata file not found."
@@ -532,7 +532,7 @@ def analyze_invalid_values(table_name: str, limit: int = 5000) -> str:
     try:
         # Load sensor metadata for thresholds
         backend_dir = os.path.dirname(os.path.dirname(__file__))
-        tags_path = os.path.join(backend_dir, "data", "tags.csv")
+        tags_path = os.path.join(backend_dir, "config", "tags.csv")
         
         if not os.path.exists(tags_path):
             return "Cannot analyze invalid values: sensor metadata file not found."

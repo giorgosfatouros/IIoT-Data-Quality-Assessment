@@ -309,14 +309,14 @@ class InvalidValuesAnalyzer:
         """Load tags metadata from CSV file"""
         import os
         try:
-            # Try backend/data/tags.csv first
+            # Try backend/config/tags.csv first
             backend_dir = os.path.dirname(os.path.dirname(__file__))
-            tags_path = os.path.join(backend_dir, "data", "tags.csv")
+            tags_path = os.path.join(backend_dir, "config", "tags.csv")
             
             if not os.path.exists(tags_path):
-                # Try data/tags.csv
+                # Try config/tags.csv
                 project_dir = os.path.dirname(backend_dir)
-                tags_path = os.path.join(project_dir, "data", "tags.csv")
+                tags_path = os.path.join(project_dir, "config", "tags.csv")
             
             if os.path.exists(tags_path):
                 tags_df = pd.read_csv(tags_path)

@@ -530,7 +530,7 @@ def get_data_quality_analytics(request: DataQualityRequest) -> DataQualityAnalyt
         tags_df = None
         try:
             # Try to load tags data from tags.csv
-            tags_path = os.path.join(os.path.dirname(__file__), '../data/tags.csv')
+            tags_path = os.path.join(os.path.dirname(__file__), '../config/tags.csv')
             if os.path.exists(tags_path):
                 tags_df = pd.read_csv(tags_path)
         except Exception as e:

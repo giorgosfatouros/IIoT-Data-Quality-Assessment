@@ -213,9 +213,9 @@ def get_tags(table: Optional[str] = Query(None), limit: int = Query(2000)):
                 detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
             )
         
-        # Load tags CSV from backend/data/tags.csv
+        # Load tags CSV from backend/config/tags.csv
         backend_dir = os.path.dirname(__file__)
-        tags_path = os.path.join(backend_dir, "data", "tags.csv")
+        tags_path = os.path.join(backend_dir, "config", "tags.csv")
         
         # Check if file exists
         if not os.path.exists(tags_path):
