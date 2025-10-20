@@ -62,6 +62,7 @@ export DB_IP=127.0.0.1
 export DB_PORT=1529        # LeanXcale Query Engine port
 export DB_NAME=MOH
 export PYTHONPATH=/path/to/your/backend:$PYTHONPATH
+export OPENAI_API_KEY=<your_open_ai_key>
 ```
 
 The backend builds a connection URL like:

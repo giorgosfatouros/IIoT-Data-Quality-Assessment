@@ -19,6 +19,12 @@ class TableData(BaseModel):
     columns: List[str]
     rows: List[Dict[str, Any]]
 
+class HealthResponse(BaseModel):
+    status: str
+    timestamp: str
+    database: str
+    version: str
+
 class PreprocessedData(BaseModel):
     sensors: List[str]
     readings: TableData
@@ -49,6 +55,26 @@ app.add_middleware(
 app.include_router(visualization_router)
 app.include_router(agent_chat_router)
 app.include_router(data_import_router)
+
+# Health check endpoint
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint for Docker and load balancers"""
+    try:
+        # Test database connection
+        engine = get_engine()
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
+    return HealthResponse(
+        status="healthy" if db_status == "connected" else "unhealthy",
+        timestamp=datetime.now().isoformat(),
+        database=db_status,
+        version="0.2.0"
+    )
 
 # Helper functions
 @with_retry(max_retries=5, test_connection=True)

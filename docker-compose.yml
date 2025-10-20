@@ -1,0 +1,66 @@
+services:
+  # Note: LeanXcale database needs to be started separately
+  # Use: docker start leanxcaledb-service (as mentioned in your workflow)
+  # leanxcale-db:
+  #   image: leanxcale/leanxcale:latest
+  #   container_name: leanxcaledb-service
+  #   ports:
+  #     - "1529:1529"
+  #     - "1528:1528"
+  #   environment:
+  #     - LEANXCALE_MODE=standalone
+  #   volumes:
+  #     - leanxcale_data:/opt/leanxcale/data
+  #   networks:
+  #     - fame-network
+  #   healthcheck:
+  #     test: ["CMD", "nc", "-z", "localhost", "1529"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 60s
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: fame-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_USER=app
+      - DB_PASS=app
+      - DB_IP=127.0.0.1
+      - DB_PORT=1529
+      - DB_NAME=MOH
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PYTHONPATH=/app
+    networks:
+      - fame-network
+    volumes:
+      - ./backend/config:/app/config:ro
+    restart: unless-stopped
+
+  # Frontend is run locally with npm for development
+  # Uncomment below for production deployment
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: fame-frontend
+  #   ports:
+  #     - "5173:5173"
+  #   environment:
+  #     - VITE_API_URL=http://localhost:8000
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - fame-network
+  #   restart: unless-stopped
+
+volumes:
+  leanxcale_data:
+
+networks:
+  fame-network:
+    driver: bridge
