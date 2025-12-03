@@ -1,0 +1,73 @@
+---
+description: Worker Dockerfile patterns and best practices
+globs: ["worker/Dockerfile"]
+alwaysApply: false
+---
+
+# Worker Dockerfile Patterns
+
+## Base Image
+
+Always use `python:3.11-slim`:
+
+```dockerfile
+FROM python:3.11-slim
+```
+
+## System Dependencies
+
+Install PostgreSQL client libraries:
+
+```dockerfile
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+## UV Installation
+
+Install `uv` for fast package management:
+
+```dockerfile
+RUN curl -LsSf https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz | \
+    tar -xz -C /tmp && \
+    find /tmp -name "uv" -type f -executable -exec mv {} /usr/local/bin/uv \; && \
+    chmod +x /usr/local/bin/uv && \
+    rm -rf /tmp/uv* && \
+    uv --version
+```
+
+## Dependency Installation
+
+**Extract dependencies from pyproject.toml and install (NO editable install):**
+
+```dockerfile
+COPY worker/pyproject.toml /app/pyproject.toml
+COPY worker /app/worker
+COPY backend/config /app/config
+
+RUN cd /app && python -c "import tomllib; f=open('pyproject.toml','rb'); d=tomllib.load(f); deps=d['project']['dependencies']; import subprocess; subprocess.run(['uv', 'pip', 'install', '--system', '--no-cache'] + deps, check=True)"
+```
+
+## Important Notes
+
+- **Never use `-e .` (editable install)** - install dependencies only
+- Copy `pyproject.toml` before source code for better caching
+- Mount `backend/config` for access to `tags.csv` if needed
+- Use `--system --no-cache` flags with `uv pip install`
+
+## Run Command
+
+```dockerfile
+CMD ["python", "-m", "worker.src.main"]
+```
+
+## Health Check
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
+```

@@ -1,0 +1,66 @@
+---
+description: Backend directory structure and organization patterns
+globs: ["backend/**"]
+alwaysApply: false
+---
+
+# Backend Structure
+
+## Directory Organization
+
+```
+backend/
+├── api/              # API route handlers (FastAPI routers)
+│   ├── agent_chat.py
+│   ├── data_import.py
+│   └── visualization.py
+├── core/             # Business logic and services
+│   ├── analytics.py
+│   ├── connection_manager.py
+│   └── import_service.py
+├── models/           # Database models and connection
+│   └── database.py   # SQLAlchemy engine and connection management
+├── schemas/          # Pydantic schemas for request/response validation
+│   ├── data_import.py
+│   └── visualization.py
+├── config/           # Configuration files (e.g., tags.csv)
+└── main.py           # FastAPI application entry point
+```
+
+## File Organization Rules
+
+1. **API Routes** (`api/`): One file per domain/feature
+   - Use `APIRouter` for each route module
+   - Register routers in `main.py` with `app.include_router()`
+
+2. **Business Logic** (`core/`): Reusable services and utilities
+   - Connection management
+   - Analytics functions
+   - Import services
+
+3. **Database Models** (`models/`): Database connection and models
+   - `database.py`: SQLAlchemy engine and connection functions
+   - Use `get_engine()` for database connections
+
+4. **Schemas** (`schemas/`): Pydantic models for validation
+   - Request models
+   - Response models
+   - Data transfer objects
+
+5. **Main Application** (`main.py`): FastAPI app initialization
+   - Create FastAPI instance
+   - Register routers
+   - Configure middleware (CORS, etc.)
+
+## Import Patterns
+
+```python
+# In API routes
+from api.visualization import router as visualization_router
+from models.database import get_engine
+from core.connection_manager import with_retry
+
+# In core modules
+from models.database import get_engine
+from sqlalchemy import text
+```

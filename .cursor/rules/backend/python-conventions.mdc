@@ -1,0 +1,116 @@
+---
+description: Python coding conventions and style guidelines
+globs: ["backend/**/*.py", "worker/**/*.py"]
+alwaysApply: false
+---
+
+# Python Conventions
+
+## Type Hints
+
+**Always use type hints for function signatures:**
+
+```python
+from typing import Optional, List, Dict, Any
+
+def process_data(
+    data: List[Dict[str, Any]], 
+    threshold: Optional[float] = None
+) -> Dict[str, float]:
+    """Process sensor data and return statistics."""
+    pass
+```
+
+## Naming Conventions
+
+- **Functions and variables**: `snake_case`
+- **Classes**: `PascalCase`
+- **Constants**: `UPPER_SNAKE_CASE`
+- **Private methods**: Prefix with `_` (e.g., `_internal_method`)
+
+## Docstrings
+
+Use Google-style docstrings:
+
+```python
+def calculate_quality_score(data: pd.DataFrame) -> float:
+    """Calculate overall data quality score.
+    
+    Args:
+        data: DataFrame containing sensor readings
+        
+    Returns:
+        Quality score between 0.0 and 1.0
+        
+    Raises:
+        ValueError: If data is empty
+    """
+    pass
+```
+
+## Error Handling
+
+**Handle exceptions explicitly:**
+
+```python
+try:
+    result = process_data(data)
+except ValueError as e:
+    logger.error(f"Invalid data: {e}")
+    raise HTTPException(status_code=400, detail=str(e))
+except Exception as e:
+    logger.exception("Unexpected error")
+    raise HTTPException(status_code=500, detail="Internal server error")
+```
+
+## Environment Variables
+
+**Use `os.getenv()` with defaults:**
+
+```python
+import os
+
+db_host = os.getenv("DB_HOST", "localhost")
+db_port = int(os.getenv("DB_PORT", "5432"))
+api_key = os.getenv("OPENAI_API_KEY")  # Required, no default
+if not api_key:
+    raise ValueError("OPENAI_API_KEY not set")
+```
+
+## Logging
+
+Use Python's logging module:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+logger.info("Processing started")
+logger.warning("Low data quality detected")
+logger.error("Failed to process", exc_info=True)
+```
+
+## Code Style
+
+- Follow PEP 8 style guide
+- Maximum line length: 100 characters (preferred) or 120
+- Use 4 spaces for indentation
+- Use blank lines to separate logical sections
+- Import order: standard library, third-party, local
+
+## Import Organization
+
+```python
+# Standard library
+import os
+from typing import Optional, List
+
+# Third-party
+from fastapi import APIRouter
+import pandas as pd
+
+# Local
+from models.database import get_engine
+from core.connection_manager import with_retry
+```

@@ -1,0 +1,69 @@
+---
+description: Frontend directory structure and organization
+globs: ["frontend/**"]
+alwaysApply: false
+---
+
+# Frontend Structure
+
+## Directory Organization
+
+```
+frontend/
+├── src/
+│   ├── components/      # Reusable React components
+│   │   ├── Card.tsx
+│   │   ├── Footer.tsx
+│   │   └── SensorSelector.tsx
+│   ├── pages/           # Page components (routes)
+│   │   ├── Home.tsx
+│   │   ├── DataLoading.tsx
+│   │   ├── DataVisualization.tsx
+│   │   ├── MissingValues.tsx
+│   │   ├── InvalidValues.tsx
+│   │   ├── DataQuality.tsx
+│   │   └── DQAAgent.tsx
+│   ├── assets/          # Static assets (images, icons)
+│   ├── App.tsx          # Main app component with routing
+│   ├── main.tsx          # Application entry point
+│   └── styles.css       # Global styles
+├── index.html           # HTML template
+├── package.json         # Dependencies
+├── vite.config.ts       # Vite configuration
+├── tsconfig.json        # TypeScript configuration
+└── tailwind.config.js   # Tailwind CSS configuration
+```
+
+## Component Organization
+
+1. **Reusable Components** (`components/`): Shared UI components
+   - Used across multiple pages
+   - Self-contained with props interface
+
+2. **Page Components** (`pages/`): Route-level components
+   - One component per route
+   - Handle page-specific logic and data fetching
+
+3. **Assets** (`assets/`): Static files
+   - Images, logos, icons
+   - Imported as modules
+
+## Routing
+
+Configured in `App.tsx` using React Router:
+
+```typescript
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+
+<Routes>
+  <Route path="/" element={<Home />} />
+  <Route path="/data-loading" element={<DataLoading />} />
+  // ... other routes
+</Routes>
+```
+
+## TypeScript
+
+- All components use `.tsx` extension
+- Type definitions in component files
+- Use interfaces for props and state

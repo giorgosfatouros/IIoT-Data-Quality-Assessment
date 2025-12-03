@@ -1,6 +1,6 @@
 """
 Data Import API Router
-Handles CSV file uploads and triggers moh-importer via Docker
+Handles CSV file uploads and imports directly to TimescaleDB
 """
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/import", tags=["data-import"])
 @router.get("/health", response_model=DockerHealthResponse)
 async def check_import_health():
     """
-    Check if the import service is ready (Docker available, image built, etc.)
+    Check if the import service is ready (database connection available)
     """
     try:
         service = get_import_service()
@@ -42,8 +42,8 @@ async def check_import_health():
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}", exc_info=True)
         return DockerHealthResponse(
-            docker_available=False,
-            importer_image_available=False,
+            docker_available=True,  # Not needed for direct import
+            importer_image_available=True,  # Not needed for direct import
             database_connection=False,
             message=f"Health check error: {str(e)}",
             details={}
@@ -103,9 +103,10 @@ async def upload_and_import(
     data_file: UploadFile = File(..., description="CSV file containing sensor data"),
     tags_file: UploadFile = File(..., description="CSV file containing sensor tags and thresholds"),
     table_name: str = Form(..., description="Target table name"),
-    machine_type: MachineType = Form(default=MachineType.AUTO, description="Machine type"),
+    machine_type: Optional[str] = Form(default="auto", description="Machine type"),
     overwrite: bool = Form(default=False, description="Overwrite existing table"),
-    validate_only: bool = Form(default=False, description="Only validate, don't import")
+    validate_only: bool = Form(default=False, description="Only validate, don't import"),
+    selected_sensors: Optional[str] = Form(default=None, description="Comma-separated list of sensor tags to import (if empty, imports all)")
 ):
     """
     Upload CSV files and start import job
@@ -118,19 +119,18 @@ async def upload_and_import(
     
     The import runs asynchronously - use GET /import/status/{job_id} to track progress.
     """
-    service = get_import_service()
+    try:
+        service = get_import_service()
+    except Exception as e:
+        logger.error(f"Failed to get import service: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Service initialization error: {str(e)}")
     
-    # Check health first
+    # Check health first (database connection)
     health = service.check_docker_health()
-    if not health["docker_available"]:
+    if not health["database_connection"]:
         raise HTTPException(
             status_code=503,
-            detail="Docker is not available. Cannot perform import."
-        )
-    if not health["importer_image_available"]:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Docker image not found. Please build it first: {health.get('details', {}).get('build_command', 'N/A')}"
+            detail=f"Database connection not available. Cannot perform import. {health.get('message', '')}"
         )
     
     # Create job ID
@@ -144,10 +144,16 @@ async def upload_and_import(
     tags_file_path = job_dir / "tags.csv"
     
     try:
+        # Reset file pointers in case they were read before
+        data_file.file.seek(0)
+        tags_file.file.seek(0)
+        
         # Save files
         with open(data_file_path, "wb") as f:
             shutil.copyfileobj(data_file.file, f)
         
+        # Reset tags file pointer
+        tags_file.file.seek(0)
         with open(tags_file_path, "wb") as f:
             shutil.copyfileobj(tags_file.file, f)
         
@@ -170,8 +176,17 @@ async def upload_and_import(
             )
         
         # Determine machine type
-        detected_machine_type = machine_type.value
-        if machine_type == MachineType.AUTO:
+        # Convert string to MachineType enum if needed
+        machine_type_str = str(machine_type).lower() if machine_type else "auto"
+        try:
+            machine_type_enum = MachineType(machine_type_str)
+        except ValueError:
+            # Invalid machine type, default to AUTO
+            machine_type_enum = MachineType.AUTO
+            logger.warning(f"Invalid machine_type '{machine_type}', defaulting to AUTO")
+        
+        detected_machine_type = machine_type_enum.value
+        if machine_type_enum == MachineType.AUTO:
             detected_machine_type = validation.suggested_machine_type
             if not detected_machine_type:
                 raise HTTPException(
@@ -181,6 +196,13 @@ async def upload_and_import(
         
         # Normalize table name
         table_name_normalized = table_name.upper()
+        
+        # Parse selected sensors if provided
+        selected_sensors_list = None
+        if selected_sensors:
+            selected_sensors_list = [s.strip() for s in selected_sensors.split(',') if s.strip()]
+            if not selected_sensors_list:
+                selected_sensors_list = None
         
         # Create job status
         job_status = ImportJobStatus(
@@ -207,7 +229,8 @@ async def upload_and_import(
                 data_file_path=data_file_path,
                 tags_file_path=tags_file_path,
                 table_name=table_name_normalized,
-                machine_type=detected_machine_type
+                machine_type=detected_machine_type,
+                selected_sensors=selected_sensors_list
             )
             message = "Import job started. Use the job_id to track progress."
         

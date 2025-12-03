@@ -102,11 +102,11 @@ export default function InvalidValues() {
       const response = await fetch(`${API_BASE}/tables`)
       if (!response.ok) throw new Error('Failed to fetch tables')
       const data = await response.json()
-      // Filter to only show HOURS tables (aggregated data)
-      const hoursTables = data.filter((table: string) => table.endsWith('_HOURS'))
-      setTables(hoursTables)
-      if (hoursTables.length > 0 && !selectedTable) {
-        setSelectedTable(hoursTables[0])
+      // Use all machine groups from aggregated_insights (no filtering needed)
+      // The /tables endpoint already returns distinct machine_group values
+      setTables(data)
+      if (data.length > 0 && !selectedTable) {
+        setSelectedTable(data[0])
       }
     } catch (err: any) {
       setError(err.message)

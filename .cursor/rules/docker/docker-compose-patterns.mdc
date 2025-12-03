@@ -1,0 +1,154 @@
+---
+description: Docker Compose patterns and service configuration
+globs: ["docker-compose.yml", "*.sh"]
+alwaysApply: false
+---
+
+# Docker Compose Patterns
+
+## Service Naming
+
+Standard service names:
+- `timescaledb` - PostgreSQL with TimescaleDB extension
+- `backend` - FastAPI backend API
+- `worker` - Background data aggregation worker
+
+## Service Configuration
+
+### TimescaleDB Service
+
+```yaml
+timescaledb:
+  image: timescale/timescaledb:latest-pg16
+  container_name: fame-timescaledb
+  environment:
+    POSTGRES_DB: ${DB_NAME:-iiot_dqa}
+    POSTGRES_USER: ${DB_USER:-iiot_user}
+    POSTGRES_PASSWORD: ${DB_PASS:-iiot_password}
+  volumes:
+    - timescaledb_data:/var/lib/postgresql/data
+    - ./database/init:/docker-entrypoint-initdb.d:ro
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-iiot_user} -d ${DB_NAME:-iiot_dqa}"]
+```
+
+### Backend Service
+
+```yaml
+backend:
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  environment:
+    DB_HOST: timescaledb
+    DB_PORT: 5432
+    DB_NAME: ${DB_NAME:-iiot_dqa}
+  depends_on:
+    timescaledb:
+      condition: service_healthy
+  volumes:
+    - ./backend/api:/app/api:ro
+    - ./backend/core:/app/core:ro
+    - ./backend/models:/app/models:ro
+    - ./backend/schemas:/app/schemas:ro
+    - ./backend/main.py:/app/main.py:ro
+```
+
+### Worker Service
+
+```yaml
+worker:
+  build:
+    context: .
+    dockerfile: worker/Dockerfile
+  depends_on:
+    timescaledb:
+      condition: service_healthy
+  volumes:
+    - ./worker:/app/worker:ro
+    - ./backend/config:/app/config:ro
+```
+
+## Health Checks
+
+**Always use health checks for services:**
+
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "command to test health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
+```
+
+## Dependencies
+
+Use `depends_on` with health conditions:
+
+```yaml
+depends_on:
+  timescaledb:
+    condition: service_healthy
+```
+
+## Networks
+
+Use named network:
+
+```yaml
+networks:
+  - fame-network
+
+networks:
+  fame-network:
+    driver: bridge
+```
+
+## Volumes
+
+### Named Volumes (Data Persistence)
+
+```yaml
+volumes:
+  timescaledb_data:
+    driver: local
+```
+
+### Bind Mounts (Development)
+
+```yaml
+volumes:
+  - ./backend:/app:ro  # Read-only for safety
+```
+
+## Environment Variables
+
+Load from `.env` file:
+
+```yaml
+environment:
+  DB_USER: ${DB_USER:-iiot_user}
+  DB_PASS: ${DB_PASS:-iiot_password}
+```
+
+## Development vs Production
+
+**Development:**
+- Mount code volumes for hot-reload
+- Use `--reload` flags
+- Read-only mounts for safety
+
+**Production:**
+- Copy code into images
+- No volume mounts
+- Optimized builds
+
+## Startup Scripts
+
+Use startup scripts like `start-dev.sh`:
+- Check Docker is running
+- Create `.env` if missing
+- Build and start services
+- Wait for health checks
+- Start frontend locally

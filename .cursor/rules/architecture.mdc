@@ -1,0 +1,70 @@
+---
+description: Project architecture overview and technology stack
+alwaysApply: true
+---
+
+# IIoT Data Quality Assessment - Architecture
+
+## Overview
+
+This is a full-stack web application for analyzing and assessing the quality of high-frequency data from Industrial Internet of Things (IIoT) sensors.
+
+## Technology Stack
+
+- **Backend**: FastAPI (Python 3.11+) with SQLAlchemy 2.0+
+- **Frontend**: React 18+ with TypeScript and Vite
+- **Database**: PostgreSQL with TimescaleDB extension
+- **Worker**: Python background service for data aggregation
+- **Package Management**: `uv` for Python, `npm` for Node.js
+- **Containerization**: Docker Compose
+
+## Architecture Diagram
+
+```
+┌─────────────────┐    HTTP/REST     ┌──────────────────┐    SQLAlchemy    ┌─────────────────┐
+│   React Frontend│ ◄──────────────► │  FastAPI Backend │ ◄──────────────► │  TimescaleDB    │
+│   (Port 5173)   │                  │   (Port 8000)    │                  │  (Port 5432)    │
+└─────────────────┘                  └──────────────────┘                  └─────────────────┘
+                                             │ ▲                                    │ ▲
+                                             │ │                                    │ │
+                                             │ │                                    │ │
+                                             ▼ │                                    ▼ │
+                                     ┌──────────────────┐                  ┌──────────────────┐
+                                     │  DQA Worker      │                  │  raw_sensor_data │
+                                     │  (Background)    │                  │  aggregated_insights │
+                                     └──────────────────┘                  └──────────────────┘
+```
+
+## Service Communication
+
+- **Frontend ↔ Backend**: HTTP/REST API (JSON)
+- **Backend ↔ Database**: SQLAlchemy ORM with raw SQL for TimescaleDB-specific queries
+- **Worker ↔ Database**: Direct SQLAlchemy connections for background processing
+
+## Directory Structure
+
+```
+fame-data-quality-assessment/
+├── backend/          # FastAPI backend application
+│   ├── api/         # API route handlers
+│   ├── core/         # Business logic and services
+│   ├── models/       # Database models and connection
+│   ├── schemas/      # Pydantic schemas
+│   └── config/       # Configuration files
+├── frontend/         # React frontend application
+│   └── src/
+│       ├── components/  # Reusable React components
+│       └── pages/       # Page components
+├── worker/           # Background worker service
+│   └── src/          # Worker source code
+├── database/         # Database initialization scripts
+│   └── init/         # SQL scripts (executed alphabetically)
+└── docker-compose.yml
+```
+
+## Key Design Principles
+
+1. **Separation of Concerns**: Clear separation between API, business logic, and data access
+2. **Time-Series Optimization**: Leverage TimescaleDB hypertables and continuous aggregates
+3. **Hot-Reload Development**: Code mounted as volumes for live updates
+4. **Containerization**: All services run in Docker containers for consistency

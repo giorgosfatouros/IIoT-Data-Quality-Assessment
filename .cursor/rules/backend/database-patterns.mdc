@@ -1,0 +1,108 @@
+---
+description: Database access patterns for TimescaleDB using SQLAlchemy
+globs: ["backend/models/**", "backend/core/**"]
+alwaysApply: false
+---
+
+# Database Patterns
+
+## Connection Management
+
+**Always use `get_engine()` from `models.database`:**
+
+```python
+from models.database import get_engine
+from sqlalchemy import text
+
+engine = get_engine()
+with engine.connect() as conn:
+    # Use connection
+    pass
+```
+
+## Retry Pattern
+
+**Always use `@with_retry` decorator for database operations:**
+
+```python
+from core.connection_manager import with_retry
+
+@with_retry(max_retries=3, test_connection=True)
+def query_data():
+    engine = get_engine()
+    # Database operations
+```
+
+## TimescaleDB Query Patterns
+
+### Query Aggregated Insights
+
+```python
+query = """
+    SELECT timestamp, sensor_tag, avg_value, completeness_score
+    FROM aggregated_insights
+    WHERE machine_group = :machine_group
+      AND timestamp >= :date_from
+      AND timestamp < :date_to
+    ORDER BY timestamp, sensor_tag
+"""
+```
+
+### Query Raw Sensor Data
+
+```python
+query = """
+    SELECT timestamp, sensor_tag, value
+    FROM raw_sensor_data
+    WHERE machine_group = :machine_group
+      AND timestamp >= :date_from
+    ORDER BY timestamp
+"""
+```
+
+### Query Sensor Thresholds (Metadata)
+
+```python
+query = """
+    SELECT sensor_tag, low_threshold, high_threshold, threshold_type
+    FROM sensor_thresholds
+    WHERE machine_group = :machine_group
+"""
+```
+
+## Using Raw SQL
+
+For TimescaleDB-specific queries, use `text()`:
+
+```python
+from sqlalchemy import text
+
+with engine.connect() as conn:
+    result = conn.execute(
+        text("SELECT * FROM aggregated_insights WHERE machine_group = :group"),
+        {"group": machine_group}
+    )
+```
+
+## Connection Pooling
+
+Connection pooling is handled automatically by SQLAlchemy engine:
+- Pool size: 10 connections
+- Max overflow: 20 connections
+- Pool pre-ping: Enabled (tests connections before use)
+- Pool recycle: 3600 seconds (1 hour)
+
+## Best Practices
+
+1. **Always filter by `machine_group`** when querying data
+2. **Use time ranges** for timestamp filtering
+3. **Use parameterized queries** with `:param` syntax
+4. **Close connections** properly (use context managers)
+5. **Handle connection errors** with retry decorator
+6. **Use transactions** for multi-statement operations
+
+## Table Reference
+
+- `raw_sensor_data`: Raw time-series sensor data (hypertable)
+- `aggregated_insights`: Pre-aggregated data with quality metrics (hypertable)
+- `sensor_thresholds`: Sensor metadata and thresholds

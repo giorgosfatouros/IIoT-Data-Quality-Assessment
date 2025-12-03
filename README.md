@@ -1,12 +1,12 @@
 # IIoT Data Quality Assessment Service
-<img src="static/logo.webp" alt="IIoT Data Quality Assessment App Icon" width="200" style="align:left;"/>
 
-A modern full-stack web application designed to analyze and assess the quality of high frequency data collected from Industrial Internet of Things (IIoT) sensors, efficiently. 
+A full-stack web application designed to analyze and assess the quality of high frequency data collected from Industrial Internet of Things (IIoT) sensors, efficiently. 
 
 This application consists of:
 - **FastAPI Backend**: RESTful API for data processing and analytics
 - **React Frontend**: Modern, responsive dashboard interface
-- **LeanXcale Integration**: Connects to [LeanXcale database](https://www.leanxcale.com/real-time-analytics) supporting energy efficient and incremental analytics
+- **TimescaleDB Integration**: PostgreSQL with TimescaleDB extension for time-series data optimization
+- **DQA Worker Service**: Background service for data aggregation and quality assessment
 
 ## Features 
 - **Modern Web Interface**: React-based responsive dashboard with professional UI/UX
@@ -14,9 +14,9 @@ This application consists of:
   - File validation and preview
   - Automatic machine type detection
   - Background processing with progress tracking
-  - Integration with moh-importer via Docker
+  - Direct import to TimescaleDB raw_sensor_data table
 - **Data Loading**: Interactive data source selection and preprocessing with real-time previews
-- **LeanXcale Integration**: Leverage online aggregates and incremental analytics for fast and efficient data processing
+- **TimescaleDB Integration**: Leverage hypertables, compression, and continuous aggregates for efficient time-series data processing
 - **Advanced Analytics**: Comprehensive visualization analytics including:
   - Summary statistics and correlation analysis
   - Time series analysis with trend detection
@@ -33,25 +33,26 @@ This application consists of:
 
 ```
 ┌─────────────────┐    HTTP/REST     ┌──────────────────┐    SQLAlchemy    ┌─────────────────┐
-│   React Frontend│ ◄──────────────► │  FastAPI Backend │ ◄──────────────► │ LeanXcale DB    │
-│   (Port 5173)   │                  │   (Port 8000)    │                  │  (Port 1529)    │
+│   React Frontend│ ◄──────────────► │  FastAPI Backend │ ◄──────────────► │  TimescaleDB    │
+│                 │                  │   (Port 8000)    │                  │  (Port 5432)    │
 └─────────────────┘                  └──────────────────┘                  └─────────────────┘
-                                             │ ▲
-                                             │ │ Docker API
-                                             ▼ │
-                                     ┌──────────────────┐
-                                     │  moh-importer    │
-                                     │  (Docker)        │
-                                     └──────────────────┘
+                                             │ ▲                                    │ ▲
+                                             │ │                                    │ │
+                                             │ │                                    │ │
+                                             ▼ │                                    ▼ │
+                                     ┌──────────────────┐                  ┌──────────────────┐
+                                     │  DQA Worker      │                  │  raw_sensor_data │
+                                     │  (Background)    │                  │  aggr_insights   │
+                                     └──────────────────┘                  └──────────────────┘
 ```
 
 ## Prerequisites
 - **Python 3.9+** for backend development
 - **Node.js 18+** for frontend development  
-- **Docker** for LeanXcale database
-- **LeanXcale Database** running as Docker container
-  - [Online Aggregations Documentation](https://docs.leanxcale.com/leanxcale/v2.3/sql_reference/sql-ddl.html#_create_online_aggregate_and_drop_online_aggregate_statements)
-  - [Hands-on Tutorial](https://blog.leanxcale.com/hands-on/online-aggregations-in-leanxcale/)
+- **Docker** and **Docker Compose** for containerized services
+- **TimescaleDB** (PostgreSQL with TimescaleDB extension) - automatically set up via Docker Compose
+  - [TimescaleDB Documentation](https://docs.timescale.com/)
+  - [Hypertables and Compression](https://docs.timescale.com/use-timescale/latest/hypertables/)
 - **Sensor Metadata** in CSV format (see Data Description Requirements below)
 
 
@@ -109,39 +110,69 @@ git clone https://github.com/giorgosfatouros/IIoT-Data-Quality-Assessment.git
 cd iiot-data-quality-assessment-app
 ```
 
-### Start LeanXcale docker service (if needed)
-```bash
-docker run --name leanxcaledb-service --env KVPEXTERNALIP='leanxcaledb-service!9800' -p 0.0.0.0:1529:1529 -d ferrari 
-```
-For Installing LeanXscale refer here: https://gitlab.gftinnovation.eu/fame/leanxcaledb.git
+### Quick Start with Docker Compose
 
-### Local Installation
+1. Clone the repository and navigate to the project directory:
+```bash
+git clone <repository-url>
+cd fame-data-quality-assessment
+```
+
+2. Create `.env` file from example:
+```bash
+cp env.example .env
+# Edit .env and add your OPENAI_API_KEY
+```
+
+3. Start all services:
+```bash
+./start-dev.sh
+```
+
+This will start:
+- TimescaleDB database (port 5432)
+- DQA Worker service (background aggregation)
+- FastAPI Backend (port 8000)
+- React Frontend (port 5173)
+
+### Manual Installation
 
 1. Navigate to the project directory:
-
 ```bash
-cd iiot-data-quality-assessment-app
-
-```
-2. Create and activate a virtual environment:
-```bash
-python -m venv iot
-source iot/bin/activate
+cd fame-data-quality-assessment
 ```
 
-3. Install the LeanXcale Python client and project dependencies:
+2. Set up backend:
 ```bash
-pip install pyLeanxcale-1.9.13_latest-py3-none-any.whl 
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
-4. Install any additional requirements:
+
+3. Set up frontend:
 ```bash
-pip install requirements.txt
+cd frontend
+npm install
 ```
-#### Running the App
-To run the app, navigate to the project directory in your terminal and execute:
+
+4. Start TimescaleDB with Docker:
 ```bash
-streamlit run app.py
+docker-compose up -d timescaledb
 ```
+
+5. Start backend:
+```bash
+cd backend
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+6. Start frontend (in another terminal):
+```bash
+cd frontend
+npm run dev
+```
+
 ### Docker Installation 
 
 ```bash
@@ -163,16 +194,22 @@ The application includes a RESTful API for uploading and importing sensor data C
 
 ### Setup
 
-1. **Build the moh-importer Docker image:**
+The Data Import API is part of the FastAPI backend service. All services, including the DQA Worker for background data aggregation, are automatically set up when you start the application using Docker Compose:
+
 ```bash
-cd /home/george/moh-importer-main
-docker build -t moh-importer:latest .
+./start-dev.sh
 ```
 
-2. **Ensure Python dependencies are installed:**
+This will start:
+- TimescaleDB database
+- DQA Worker service (handles background data aggregation)
+- FastAPI Backend (includes the Data Import API)
+- React Frontend
+
+For manual setup, ensure the backend dependencies are installed using `uv` (the project uses `pyproject.toml` for dependency management):
 ```bash
 cd backend
-pip install -r requirements.txt
+uv pip install -e .
 ```
 
 ### Quick Usage
@@ -212,6 +249,22 @@ For complete API documentation, see **[DATA_IMPORT_API.md](DATA_IMPORT_API.md)**
 - **K5700**: K-5700 Machine
 - **AUTO**: Automatic detection from filename or column patterns
 
-### Acknowledgements
-The project has received funding from the European Union’s funded **Project HEU FAME** under Grant Agreement No. **101092639**.
+## Citation
+
+If you use this software in your research, please cite:
+
+```bibtex
+@inproceedings{fatouros2023comprehensive,
+  title={Comprehensive architecture for data quality assessment in industrial iot},
+  author={Fatouros, Georgios and Makridis, Georgios and Mavrogiorgou, Argyro and Soldatos, John and Filippakis, Michael and Kyriazis, Dimosthenis},
+  booktitle={2023 19th International Conference on Distributed Computing in Smart Systems and the Internet of Things (DCOSS-IoT)},
+  pages={512--517},
+  year={2023},
+  organization={IEEE}
+}
+```
+
+## Acknowledgements
+
+The project has received funding from the European Union's funded **Project HEU FAME** under Grant Agreement No. **101092639**.
 

@@ -75,6 +75,7 @@ class FileValidationResult(BaseModel):
     errors: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     preview_rows: List[Dict[str, Any]] = Field(default_factory=list)
+    sensor_tags: List[str] = Field(default_factory=list, description="List of identified sensor tags from the CSV file")
 
 class TagsValidationResult(BaseModel):
     """Result of tags file validation"""
@@ -95,6 +96,7 @@ class ImportValidationResponse(BaseModel):
     can_proceed: bool
     suggested_table_name: Optional[str] = None
     suggested_machine_type: Optional[str] = None
+    available_sensors: List[str] = Field(default_factory=list, description="List of available sensors that can be selected for import")
 
 class ImportHistoryItem(BaseModel):
     """Historical import job item"""

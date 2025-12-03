@@ -1,11 +1,16 @@
 import os
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from sqlalchemy import create_engine, inspect, Table, MetaData, select
 import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Import new modules
 from api.visualization import router as visualization_router
@@ -51,6 +56,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add validation error handler to debug 422 errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle validation errors with detailed logging"""
+    logger.error(f"Validation error on {request.url.path}: {exc.errors()}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "detail": exc.errors(),
+            "body": str(exc.body) if hasattr(exc, 'body') else None
+        }
+    )
+
 # Include new routers
 app.include_router(visualization_router)
 app.include_router(agent_chat_router)
@@ -64,7 +82,8 @@ async def health_check():
         # Test database connection
         engine = get_engine()
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            from sqlalchemy import text
+            conn.execute(text("SELECT 1"))
         db_status = "connected"
     except Exception as e:
         db_status = f"error: {str(e)}"
@@ -141,220 +160,264 @@ def health():
 @app.get("/tables", response_model=List[str])
 @with_retry(max_retries=3, test_connection=True)
 def list_tables():
-    eng = get_engine()
-    all_tables = inspect(eng).get_table_names()
-    # Filter to only return _HOURS tables (aggregated data)
-    hours_tables = [table for table in all_tables if table.endswith('_HOURS')]
-    return hours_tables
-
-@app.get("/tables/{table_name}")
-@with_retry(max_retries=3, test_connection=True)
-def get_table_info(table_name: str):
+    """List available machine groups from aggregated_insights table"""
     engine = get_engine()
-    inspector = inspect(engine)
-    columns = inspector.get_columns(table_name)
+    query = "SELECT DISTINCT machine_group FROM aggregated_insights ORDER BY machine_group"
+    
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        result = conn.execute(text(query))
+        machine_groups = [row[0] for row in result.fetchall()]
+    
+    return machine_groups if machine_groups else []
+
+@app.get("/tables/{machine_group}")
+@with_retry(max_retries=3, test_connection=True)
+def get_table_info(machine_group: str):
+    """Get information about sensors for a machine group"""
+    engine = get_engine()
+    query = """
+        SELECT DISTINCT sensor_tag
+        FROM aggregated_insights
+        WHERE machine_group = :machine_group
+        ORDER BY sensor_tag
+    """
+    
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        result = conn.execute(text(query), {"machine_group": machine_group})
+        sensors = [row[0] for row in result.fetchall()]
+    
     return {
-        "table_name": table_name,
-        "columns": [{"name": col["name"], "type": str(col["type"])} for col in columns]
+        "table_name": machine_group,
+        "machine_group": machine_group,
+        "sensors": sensors,
+        "sensor_count": len(sensors)
     }
 
 @app.get("/data", response_model=TableData)
 def get_data(table: str = Query(...), limit: int = Query(1000)):
+    """Get aggregated insights data for a machine group (table parameter is now machine_group)"""
     try:
-        # Validate that only _HOURS tables (aggregated data) are used
-        if not table.endswith('_HOURS'):
-            raise HTTPException(
-                status_code=400, 
-                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
-            )
+        engine = get_engine()
+        machine_group = table  # table parameter now represents machine_group
         
-        df = _fetch_table_dataframe(table, limit)
+        query = """
+            SELECT timestamp, machine_group, sensor_tag, 
+                   sum_value, count_value, min_value, max_value, avg_value, stddev_value,
+                   count_invalid, count_missing, count_anomaly,
+                   completeness_score, validity_score, anomaly_score, overall_quality_score
+            FROM aggregated_insights
+            WHERE machine_group = :machine_group
+            ORDER BY timestamp DESC, sensor_tag
+            LIMIT :limit
+        """
+        
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            result = conn.execute(text(query), {"machine_group": machine_group, "limit": limit})
+            columns = result.keys()
+            rows = result.fetchall()
+            df = pd.DataFrame(rows, columns=columns)
+        
         return TableData(
             columns=df.columns.tolist(),
             rows=df.to_dict(orient="records")
         )
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
 
 @app.get("/data/preprocessed", response_model=PreprocessedData)
 def get_preprocessed_data(table: str = Query(...), limit: int = Query(5000)):
+    """Get preprocessed sensor data (pivoted by sensor) for a machine group"""
     try:
-        # Validate that only _HOURS tables (aggregated data) are used
-        if not table.endswith('_HOURS'):
-            raise HTTPException(
-                status_code=400, 
-                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
+        engine = get_engine()
+        machine_group = table  # table parameter now represents machine_group
+        
+        # Fetch aggregated insights
+        query = """
+            SELECT timestamp, sensor_tag, avg_value as mean_value
+            FROM aggregated_insights
+            WHERE machine_group = :machine_group
+            ORDER BY timestamp DESC, sensor_tag
+            LIMIT :limit
+        """
+        
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            result = conn.execute(text(query), {"machine_group": machine_group, "limit": limit})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        
+        if df.empty:
+            return PreprocessedData(
+                sensors=[],
+                readings=TableData(columns=[], rows=[])
             )
         
-        df = _fetch_table_dataframe(table, limit)
+        # Pivot to have sensors as columns
+        df_pivot = df.pivot(index='timestamp', columns='sensor_tag', values='mean_value')
+        df_pivot = df_pivot.reset_index()
         
-        # Preprocess the data
-        processed_df, sensors = _preprocess_sensor_data(df)
-        
-        # Add timestamp back if it exists
-        if 'TIMESTAMP' in df.columns:
-            processed_df['timestamp'] = df['TIMESTAMP'].iloc[:len(processed_df)]
-        elif 'timestamp' in df.columns:
-            processed_df['timestamp'] = df['timestamp'].iloc[:len(processed_df)]
+        # Get sensor list
+        sensors = [col for col in df_pivot.columns if col != 'timestamp']
         
         return PreprocessedData(
             sensors=sensors,
             readings=TableData(
-                columns=processed_df.columns.tolist(),
-                rows=processed_df.to_dict(orient="records")
+                columns=df_pivot.columns.tolist(),
+                rows=df_pivot.to_dict(orient="records")
             )
         )
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error preprocessing data: {str(e)}")
 
 @app.get("/sensors", response_model=List[str])
 def get_sensors(table: str = Query(...)):
+    """Get list of sensors for a machine group"""
     try:
-        # Validate that only _HOURS tables (aggregated data) are used
-        if not table.endswith('_HOURS'):
-            raise HTTPException(
-                status_code=400, 
-                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
-            )
+        engine = get_engine()
+        machine_group = table  # table parameter now represents machine_group
         
-        df = _fetch_table_dataframe(table, limit=1)
-        _, sensors = _preprocess_sensor_data(df)
+        query = """
+            SELECT DISTINCT sensor_tag
+            FROM aggregated_insights
+            WHERE machine_group = :machine_group
+            ORDER BY sensor_tag
+        """
+        
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            result = conn.execute(text(query), {"machine_group": machine_group})
+            sensors = [row[0] for row in result.fetchall()]
+        
         return sensors
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/tags", response_model=TagsResponse)
 def get_tags(table: Optional[str] = Query(None), limit: int = Query(2000)):
+    """Get sensor tags/thresholds from sensor_thresholds table"""
     try:
-        # Validate table parameter if provided
-        if table and not table.endswith('_HOURS'):
-            raise HTTPException(
-                status_code=400, 
-                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
-            )
+        engine = get_engine()
+        machine_group = table  # table parameter now represents machine_group
         
-        # Load tags CSV from backend/config/tags.csv
-        backend_dir = os.path.dirname(__file__)
-        tags_path = os.path.join(backend_dir, "config", "tags.csv")
-        
-        # Check if file exists
-        if not os.path.exists(tags_path):
-            raise HTTPException(status_code=404, detail=f"Tags file not found at {tags_path}")
-        
-        tags = pd.read_csv(tags_path, header=0)
-        tags.columns = [c.strip().lower().replace(" ", "_") for c in tags.columns]
-        
-        # Ensure tag column exists and normalize
-        if "tag" in tags.columns:
-            tags["tag"] = tags["tag"].str.lower()
+        # Build query
+        if machine_group:
+            # Filter by machine group
+            query = """
+                SELECT tag, tag_description, machine_group, low_threshold, high_threshold,
+                       threshold_type, aggregation_rule, engineering_units, category
+                FROM sensor_thresholds
+                WHERE machine_group = :machine_group
+                ORDER BY tag
+                LIMIT :limit
+            """
+            params = {"machine_group": machine_group, "limit": limit}
         else:
-            raise HTTPException(status_code=400, detail="Tags CSV must contain a 'tag' column")
-
-        # Filter by table columns if table is specified
-        if table:
-            try:
-                df = _fetch_table_dataframe(table, limit=limit)
-                present_cols = set(df.columns)
-                
-                # Extract tag names from column names (remove prefixes like "COL", "SUM_", "COUNT_", etc.)
-                extracted_tags = set()
-                for col in present_cols:
-                    # Handle columns like "SUM_COL33VI603", "COUNT_COL33VI603", "MIN_COL33VI603", "MAX_COL33VI603"
-                    if col.startswith(('SUM_COL', 'COUNT_COL', 'MIN_COL', 'MAX_COL')):
-                        tag = col.split('_', 1)[1]  # Remove "SUM_", "COUNT_", etc.
-                        if tag.startswith('COL'):
-                            tag = tag[3:]  # Remove "COL" prefix -> "33VI603"
-                        extracted_tags.add(tag.lower())  # Convert to lowercase for matching
-                    elif col.startswith('COL'):
-                        extracted_tags.add(col[3:].lower())  # Remove "COL" prefix and lowercase
-                    else:
-                        extracted_tags.add(col.lower())  # Convert to lowercase for matching
-                
-                # Filter tags based on extracted tag names
-                tags = tags[tags["tag"].isin(extracted_tags)].reset_index(drop=True)
-            except Exception as table_err:
-                # If table fetch fails, return all tags with a warning
-                print(f"Warning: Could not fetch table {table} for filtering: {table_err}")
-
-        rows = tags.to_dict(orient="records")
-        return {"columns": list(tags.columns), "rows": rows}
-    except HTTPException:
-        raise
+            # Get all tags
+            query = """
+                SELECT tag, tag_description, machine_group, low_threshold, high_threshold,
+                       threshold_type, aggregation_rule, engineering_units, category
+                FROM sensor_thresholds
+                ORDER BY machine_group, tag
+                LIMIT :limit
+            """
+            params = {"limit": limit}
+        
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            result = conn.execute(text(query), params)
+            columns = result.keys()
+            rows = result.fetchall()
+            
+            # Convert to DataFrame for easier manipulation
+            df = pd.DataFrame(rows, columns=columns)
+        
+        # Convert to response format
+        rows_dict = df.to_dict(orient="records")
+        return {"columns": list(df.columns), "rows": rows_dict}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error loading tags: {str(e)}")
 
 @app.get("/analytics/aggregation_frequency", response_model=AggregationFrequency)
 def get_aggregation_frequency(table: str = Query(...)):
+    """Get aggregation frequency for a machine group"""
     try:
-        # Validate that only _HOURS tables (aggregated data) are used
-        if not table.endswith('_HOURS'):
-            raise HTTPException(
-                status_code=400, 
-                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
-            )
+        engine = get_engine()
+        machine_group = table  # table parameter now represents machine_group
         
-        df = _fetch_table_dataframe(table, limit=100)
+        query = """
+            SELECT DISTINCT aggregation_interval_seconds
+            FROM aggregated_insights
+            WHERE machine_group = :machine_group
+            LIMIT 1
+        """
         
-        if 'timestamp' not in df.columns:
-            return AggregationFrequency(aggregation_frequency_seconds=None)
-        
-        # Convert timestamp to datetime
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df = df.sort_values('timestamp')
-        
-        # Calculate time differences
-        time_diffs = df['timestamp'].diff().dropna()
-        
-        if len(time_diffs) == 0:
-            return AggregationFrequency(aggregation_frequency_seconds=None)
-        
-        # Get the most common time difference (mode)
-        mode_diff = time_diffs.mode()
-        
-        if len(mode_diff) > 0:
-            freq_seconds = int(mode_diff.iloc[0].total_seconds())
-            return AggregationFrequency(aggregation_frequency_seconds=freq_seconds)
-        else:
-            return AggregationFrequency(aggregation_frequency_seconds=None)
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            result = conn.execute(text(query), {"machine_group": machine_group})
+            row = result.fetchone()
             
-    except HTTPException:
-        raise
+            if row and row[0]:
+                return AggregationFrequency(aggregation_frequency_seconds=int(row[0]))
+            else:
+                # Default to 3600 seconds (1 hour) if not found
+                return AggregationFrequency(aggregation_frequency_seconds=3600)
+            
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating aggregation frequency: {str(e)}")
 
 @app.get("/analytics/missing", response_model=MissingValuesResponse)
 def get_missing_values_analysis(table: str = Query(...), limit: int = Query(5000)):
+    """Get missing values analysis for a machine group from aggregated_insights"""
     try:
-        # Validate that only _HOURS tables (aggregated data) are used
-        if not table.endswith('_HOURS'):
-            raise HTTPException(
-                status_code=400, 
-                detail="Only _HOURS tables (aggregated data) are supported. Use tables ending with '_HOURS'."
+        engine = get_engine()
+        machine_group = table  # table parameter now represents machine_group
+        
+        # Query aggregated insights for missing values data
+        query = """
+            SELECT sensor_tag, 
+                   AVG(count_missing) as avg_missing,
+                   AVG(count_value) as avg_count,
+                   AVG(expected_count) as avg_expected,
+                   AVG(completeness_score) as avg_completeness
+            FROM aggregated_insights
+            WHERE machine_group = :machine_group
+            GROUP BY sensor_tag
+            ORDER BY sensor_tag
+            LIMIT :limit
+        """
+        
+        with engine.connect() as conn:
+            from sqlalchemy import text
+            result = conn.execute(text(query), {"machine_group": machine_group, "limit": limit})
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        
+        if df.empty:
+            return MissingValuesResponse(
+                missing_values={},
+                total_missing_percentage=0.0
             )
         
-        df = _fetch_table_dataframe(table, limit)
+        # Calculate missing percentage per sensor
+        missing_percentages = {}
+        for _, row in df.iterrows():
+            sensor = row['sensor_tag']
+            avg_expected = row['avg_expected'] or 360  # Default to 360 if null
+            avg_missing = row['avg_missing'] or 0
+            missing_pct = (avg_missing / avg_expected * 100) if avg_expected > 0 else 0.0
+            missing_percentages[sensor] = float(missing_pct)
         
-        # Calculate missing values percentage for each column
-        missing_percentages = (df.isnull().sum() / len(df) * 100).to_dict()
-        
-        # Calculate total missing percentage
-        total_missing = df.isnull().sum().sum()
-        total_cells = df.size
-        total_missing_percentage = (total_missing / total_cells * 100) if total_cells > 0 else 0
+        # Calculate total missing percentage (average of all sensors)
+        total_missing_percentage = float(df['avg_completeness'].mean()) if 'avg_completeness' in df.columns else 0.0
+        # Convert completeness to missing percentage
+        total_missing_percentage = 100.0 - total_missing_percentage if total_missing_percentage > 0 else 0.0
         
         return MissingValuesResponse(
             missing_values=missing_percentages,
             total_missing_percentage=total_missing_percentage
         )
         
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing missing values: {str(e)}")
 

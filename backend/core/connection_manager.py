@@ -3,7 +3,8 @@ import logging
 from typing import Optional, Callable, Any
 from functools import wraps
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError, DisconnectionError
+from sqlalchemy.exc import SQLAlchemyError, DisconnectionError, OperationalError
+from psycopg2 import OperationalError as Psycopg2OperationalError
 from models.database import get_engine
 
 logger = logging.getLogger(__name__)
@@ -97,10 +98,15 @@ def with_retry(max_retries: Optional[int] = None, test_connection: bool = True):
                     retry_manager.record_success()
                     return result
                     
-                except (SQLAlchemyError, DisconnectionError, Exception) as e:
+                except (SQLAlchemyError, DisconnectionError, OperationalError, Psycopg2OperationalError, Exception) as e:
                     retry_manager.record_failure()
                     
-                    if attempt < retries:
+                    # Check if it's a connection error that should be retried
+                    is_retryable = isinstance(e, (DisconnectionError, OperationalError, Psycopg2OperationalError)) or \
+                                  "connection" in str(e).lower() or \
+                                  "network" in str(e).lower()
+                    
+                    if attempt < retries and is_retryable:
                         delay = retry_manager.get_retry_delay(attempt)
                         logger.warning(f"Database operation failed (attempt {attempt + 1}/{retries + 1}): {e}")
                         logger.info(f"Retrying in {delay:.2f}s...")

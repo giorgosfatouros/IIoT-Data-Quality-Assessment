@@ -1,25 +1,107 @@
 services:
-  # Note: LeanXcale database needs to be started separately
-  # Use: docker start leanxcaledb-service (as mentioned in your workflow)
-  # leanxcale-db:
-  #   image: leanxcale/leanxcale:latest
-  #   container_name: leanxcaledb-service
-  #   ports:
-  #     - "1529:1529"
-  #     - "1528:1528"
-  #   environment:
-  #     - LEANXCALE_MODE=standalone
-  #   volumes:
-  #     - leanxcale_data:/opt/leanxcale/data
-  #   networks:
-  #     - fame-network
-  #   healthcheck:
-  #     test: ["CMD", "nc", "-z", "localhost", "1529"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 60s
+  # ============================================================================
+  # PostgreSQL with TimescaleDB Extension
+  # ============================================================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: fame-timescaledb
+    environment:
+      POSTGRES_DB: ${DB_NAME:-iiot_dqa}
+      POSTGRES_USER: ${DB_USER:-iiot_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-iiot_password}
+      POSTGRES_INITDB_ARGS: "-c shared_preload_libraries=timescaledb"
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      # Database persistence
+      - timescaledb_data:/var/lib/postgresql/data
+      # Initialization scripts (executed in alphabetical order)
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - fame-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-iiot_user} -d ${DB_NAME:-iiot_dqa}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    # Performance tuning for TimescaleDB
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=2GB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "max_worker_processes=4"
+      - "-c"
+      - "max_parallel_workers_per_gather=2"
+      - "-c"
+      - "max_parallel_workers=4"
 
+  # ============================================================================
+  # Data Quality Worker Service
+  # ============================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    container_name: fame-dqa-worker
+    environment:
+      # Database connection
+      DB_HOST: timescaledb
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-iiot_dqa}
+      DB_USER: ${DB_USER:-iiot_user}
+      DB_PASS: ${DB_PASS:-iiot_password}
+
+      # Worker configuration
+      AGGREGATION_INTERVAL_SECONDS: ${AGGREGATION_INTERVAL_SECONDS:-3600}  # Default: 1 hour
+      ORIGINAL_FREQUENCY_SECONDS: ${ORIGINAL_FREQUENCY_SECONDS:-10}  # Default: 10 seconds
+      ANOMALY_THRESHOLD_ZSCORE: ${ANOMALY_THRESHOLD_ZSCORE:-2.0}  # Z-score threshold for anomaly detection
+
+      # Data ingestion settings
+      BATCH_SIZE: ${BATCH_SIZE:-1000}  # Number of records to batch insert
+      WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-60}  # How often worker runs aggregation
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONPATH: /app
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - fame-network
+    volumes:
+      # Mount worker code for development (remove in production)
+      - ./worker:/app/worker:ro
+      - ./backend/config:/app/config:ro  # Access to tags.csv if needed
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ============================================================================
+  # FastAPI Backend Service
+  # ============================================================================
   backend:
     build:
       context: .
@@ -28,18 +110,41 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DB_USER=app
-      - DB_PASS=app
-      - DB_IP=127.0.0.1
-      - DB_PORT=1529
-      - DB_NAME=MOH
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - PYTHONPATH=/app
+      # Database connection (PostgreSQL instead of LeanXcale)
+      DB_HOST: timescaledb
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-iiot_dqa}
+      DB_USER: ${DB_USER:-iiot_user}
+      DB_PASS: ${DB_PASS:-iiot_password}
+      # Legacy env vars for backward compatibility (will be updated in code)
+      DB_IP: timescaledb
+      DB_PORT_LEGACY: 5432
+      
+      # Application settings
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      PYTHONPATH: /app
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      worker:
+        condition: service_started
     networks:
       - fame-network
     volumes:
+      # Mount backend code for development hot-reload (remove in production)
+      - ./backend/api:/app/api:ro
+      - ./backend/core:/app/core:ro
+      - ./backend/models:/app/models:ro
+      - ./backend/schemas:/app/schemas:ro
+      - ./backend/main.py:/app/main.py:ro
       - ./backend/config:/app/config:ro
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # Frontend is run locally with npm for development
   # Uncomment below for production deployment
@@ -59,7 +164,9 @@ services:
   #   restart: unless-stopped
 
 volumes:
-  leanxcale_data:
+  timescaledb_data:
+    driver: local
+    name: fame_timescaledb_data
 
 networks:
   fame-network:

@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# FAME Data Quality Assessment - Production Startup Script
+# This script starts all services in production mode with Docker Compose
+
+set -e
+
+echo "🚀 Starting FAME Data Quality Assessment Production Environment"
+echo "================================================================"
+
+# Check if Docker is running
+if ! docker info > /dev/null 2>&1; then
+    echo "❌ Docker is not running. Please start Docker and try again."
+    exit 1
+fi
+
+# Check if .env file exists, if not create from example
+if [ ! -f .env ]; then
+    echo "📝 Creating .env file from example..."
+    cp env.example .env
+    echo "⚠️  Please edit .env file and configure your settings"
+    echo "   Then run this script again."
+    exit 1
+fi
+
+# Load environment variables
+export $(cat .env | grep -v '^#' | xargs)
+
+echo "🔧 Environment Configuration:"
+echo "   DB_HOST: ${DB_HOST:-timescaledb}"
+echo "   DB_PORT: ${DB_PORT:-5432}"
+echo "   DB_NAME: ${DB_NAME:-iiot_dqa}"
+echo "   OPENAI_API_KEY: ${OPENAI_API_KEY:0:10}..."
+
+# Build and start all services (including frontend in production mode)
+echo "🏗️  Building and starting all services..."
+docker-compose up --build -d
+
+echo "⏳ Waiting for services to be ready..."
+
+# Wait for TimescaleDB database
+echo "   Waiting for TimescaleDB database..."
+timeout=90
+while ! docker-compose exec -T timescaledb pg_isready -U ${DB_USER:-iiot_user} -d ${DB_NAME:-iiot_dqa} 2>/dev/null; do
+    sleep 2
+    timeout=$((timeout - 2))
+    if [ $timeout -le 0 ]; then
+        echo "❌ TimescaleDB database failed to start within 90 seconds"
+        docker-compose logs timescaledb
+        exit 1
+    fi
+done
+echo "   ✅ TimescaleDB database is ready"
+
+# Wait for worker
+echo "   Waiting for worker service..."
+timeout=60
+while ! docker-compose ps worker | grep -q "Up"; do
+    sleep 2
+    timeout=$((timeout - 2))
+    if [ $timeout -le 0 ]; then
+        echo "⚠️  Worker service may not be ready, but continuing..."
+        break
+    fi
+done
+echo "   ✅ Worker service is ready"
+
+# Wait for backend
+echo "   Waiting for backend service..."
+timeout=60
+while ! curl -f http://localhost:8000/health 2>/dev/null; do
+    sleep 2
+    timeout=$((timeout - 2))
+    if [ $timeout -le 0 ]; then
+        echo "❌ Backend service failed to start within 60 seconds"
+        docker-compose logs backend
+        exit 1
+    fi
+done
+echo "   ✅ Backend service is ready"
+
+# Wait for frontend (if enabled in docker-compose)
+if docker-compose ps frontend 2>/dev/null | grep -q "Up"; then
+    echo "   Waiting for frontend service..."
+    timeout=60
+    while ! curl -f http://localhost:5173 2>/dev/null; do
+        sleep 2
+        timeout=$((timeout - 2))
+        if [ $timeout -le 0 ]; then
+            echo "⚠️  Frontend service may not be ready"
+            break
+        fi
+    done
+    echo "   ✅ Frontend service is ready"
+fi
+
+echo ""
+echo "🎉 All services are running!"
+echo "================================================================"
+echo "📊 Frontend: http://localhost:5173"
+echo "🔧 Backend API: http://localhost:8000"
+echo "📚 API Docs: http://localhost:8000/docs"
+echo "🗄️  TimescaleDB: localhost:${DB_PORT:-5432}"
+echo "⚙️  Worker: Running in background"
+echo ""
+echo "📋 Useful commands:"
+echo "   View logs: docker-compose logs -f"
+echo "   Stop services: ./stop-prod.sh"
+echo "   Restart: docker-compose restart [service-name]"
+echo "================================================================"
+

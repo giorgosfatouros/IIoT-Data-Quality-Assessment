@@ -1,162 +1,139 @@
 # IIoT Data Quality Backend API
 
-This README describes how to deploy and run the FastAPI backend locally against a LeanXcale database running in Docker.
+FastAPI backend for analyzing and assessing the quality of high-frequency IIoT sensor data using PostgreSQL with TimescaleDB.
 
-## DQA Agent
+## Quick Start (Docker Compose)
 
-The backend includes an AI-powered Data Quality Assessment Agent that uses OpenAI's Agents SDK to answer questions about your sensor data. See [QUICKSTART_DQA.md](../QUICKSTART_DQA.md) and [DQA_AGENT_SETUP.md](../DQA_AGENT_SETUP.md) for setup instructions.
+The recommended way to run the backend is using Docker Compose:
 
-## Prerequisites
-- Python 3.9+ installed on your machine
-- LeanXcale DB running as a Docker container (exposing port 1529)
-- The LeanXcale client wheel available locally at `backend/tmp/pyLeanxcale-1.9.13_latest-py3-none-any.whl`
-- Optional: `uv` (fast Python package manager) for creating a virtualenv
-
-## 1) Create and activate a virtual environment
-From the project root or from `backend/`:
-
-Using uv (recommended):
 ```bash
-cd backend
-uv venv .venv-312 --seed
-source .venv-312/bin/activate
+# From project root
+./start-dev.sh
 ```
 
-Using the built-in venv:
+This starts:
+- **TimescaleDB** (PostgreSQL with time-series extension)
+- **Worker** (background data aggregation service)
+- **Backend API** (FastAPI server on port 8000)
+
+The backend will be available at:
+- **API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+
+## Local Development Setup
+
+For local development without Docker:
+
+### Prerequisites
+- Python 3.11+
+- PostgreSQL with TimescaleDB extension
+- `uv` package manager ([install](https://github.com/astral-sh/uv))
+
+### Setup
+
+1. **Create virtual environment and install dependencies**:
 ```bash
 cd backend
-python3 -m venv .venv
+uv sync
 source .venv/bin/activate
 ```
 
-## 2) Install dependencies
-Install Python dependencies listed in `requirements.txt`:
+3. **Configure environment variables**:
+Create a `.env` file or export:
 ```bash
-pip install -r requirements.txt
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_NAME=iiot_dqa
+export DB_USER=iiot_user
+export DB_PASS=iiot_password
+export OPENAI_API_KEY=your_key_here
+export PYTHONPATH=$(pwd)
 ```
 
-Install the LeanXcale client from the local wheel:
-```bash
-# from backend/
-pip install --no-deps ./tmp/pyLeanxcale-1.9.13_latest-py3-none-any.whl
-```
-If pip warns about the wheel filename being “not correctly normalised”, you can rename it and retry:
-```bash
-cp ./tmp/pyLeanxcale-1.9.13_latest-py3-none-any.whl ./tmp/pyLeanxcale-1.9.13-py3-none-any.whl
-pip install --no-deps ./tmp/pyLeanxcale-1.9.13-py3-none-any.whl
-```
-
-Install the client’s runtime requirements (as specified by the wheel metadata):
-```bash
-pip install future==0.18.2 protobuf==4.21.0 datetime==4.3 wheel==0.37.0
-```
-
-Note: We use the HTTP SQLAlchemy dialect bundled in the wheel (`pyLeanxcale`). No ODBC driver setup is needed.
-
-## 3) Configure environment variables
-Set these variables to point to your LeanXcale Docker container:
-```bash
-export DB_USER=app
-export DB_PASS=app
-export DB_IP=127.0.0.1
-export DB_PORT=1529        # LeanXcale Query Engine port
-export DB_NAME=MOH
-export PYTHONPATH=/path/to/your/backend:$PYTHONPATH
-export OPENAI_API_KEY=<your_open_ai_key>
-```
-
-The backend builds a connection URL like:
-`leanxcale://<DB_USER>:<DB_PASS>@<DB_IP>:<DB_PORT>/<DB_NAME>?autocommit=False&parallel=True&txn_mode=NO_CONFLICTS_NO_LOGGING`
-
-## 4) Start LeanXcale Database (if not running)
-Ensure your LeanXcale container is running and accessible on port 1529:
-```bash
-# Check if container is running
-docker ps | grep leanxcale
-
-# If not running, start it (example command)
-docker run --name leanxcaledb-service --env KVPEXTERNALIP='leanxcaledb-service!9800' -p 0.0.0.0:1529:1529 -d ferrari
-```
-
-## 5) Run the API server
-From `backend/` with the virtualenv activated and environment variables set:
+4. **Run the server**:
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Or run everything in one command:
-```bash
-cd /path/to/your/backend && \
-source .venv-312/bin/activate && \
-export DB_USER=app DB_PASS=app DB_IP=127.0.0.1 DB_PORT=1529 DB_NAME=MOH && \
-export PYTHONPATH=$(pwd):$PYTHONPATH && \
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+## Backend Structure
+
+```
+backend/
+├── api/              # API route handlers (FastAPI routers)
+│   ├── agent_chat.py
+│   ├── data_import.py
+│   └── visualization.py
+├── core/             # Business logic and services
+│   ├── analytics.py
+│   ├── connection_manager.py
+│   └── import_service.py
+├── models/           # Database models and connection
+│   └── database.py   # SQLAlchemy engine and connection management
+├── schemas/          # Pydantic schemas for request/response validation
+│   ├── data_import.py
+│   └── visualization.py
+├── config/           # Configuration files
+└── main.py           # FastAPI application entry point
 ```
 
-## 6) Test the API
-Test basic endpoints to ensure everything is working:
+## API Endpoints
+
+### Core
+- `GET /health` - Health check with database status
+- `GET /tables` - List available machine groups
+- `GET /tables/{machine_group}` - Get sensors for a machine group
+
+### Data
+- `GET /data?table={machine_group}&limit={n}` - Get aggregated insights data
+- `GET /data/preprocessed?table={machine_group}&limit={n}` - Get preprocessed sensor data
+- `GET /tags?table={machine_group}` - Get sensor metadata/thresholds
+- `GET /sensors?table={machine_group}` - Get list of sensors
+
+### Analytics
+- `GET /analytics/aggregation_frequency?table={machine_group}` - Get aggregation frequency
+- `GET /analytics/missing?table={machine_group}` - Get missing values analysis
+- `GET /analytics/visualization` - Comprehensive visualization analytics
+
+### Data Import
+- `POST /import/upload` - Upload and import sensor data files
+- `GET /import/status/{job_id}` - Check import job status
+
+### DQA Agent
+- `POST /agent/chat` - Chat with AI-powered data quality assessment agent
+
+## Testing
+
 ```bash
 # Health check
-curl http://127.0.0.1:8000/health
-# Expected: {"status":"ok"}
+curl http://localhost:8000/health
 
-# List available tables
-curl http://127.0.0.1:8000/tables
-# Expected: ["K3301","K3301_HOURS","KT2201","KT2201_HOURS"]
+# List machine groups
+curl http://localhost:8000/tables
 
-# Get sensor tags for a specific table
-curl "http://127.0.0.1:8000/tags?table=K3301_HOURS"
-# Expected: JSON with sensor metadata
-
-# Get preprocessed data sample
-curl "http://127.0.0.1:8000/data/preprocessed?table=K3301_HOURS&limit=5"
-# Expected: JSON with data rows and columns
+# Get sensors for a machine group
+curl "http://localhost:8000/tables/MACHINE_GROUP_1"
 ```
 
-## 7) API Documentation
-Once the server is running, you can access the interactive API documentation at:
-- **Swagger UI**: http://127.0.0.1:8000/docs
-- **ReDoc**: http://127.0.0.1:8000/redoc
+## Architecture
 
-## Available Endpoints
-
-The API provides the following main endpoints:
-
-### Core Endpoints
-- `GET /health` - Health check
-- `GET /tables` - List available database tables
-- `GET /tables/{table_name}` - Get columns for a specific table
-
-### Data Endpoints  
-- `GET /data` - Get raw data from a table
-- `GET /data/preprocessed` - Get preprocessed data with statistics
-- `GET /tags` - Get sensor metadata/tags (optionally filtered by table)
-
-### Analytics Endpoints
-- `GET /analytics/aggregation_frequency` - Get data aggregation frequency analysis
-- `GET /analytics/missing` - Get missing values analysis
-- `GET /analytics/visualization` - Get comprehensive visualization analytics (summary stats, correlation, time series, histograms, etc.)
+- **FastAPI** with Pydantic v2 for request/response validation
+- **SQLAlchemy 2.0+** with connection pooling for database operations
+- **PostgreSQL/TimescaleDB** for time-series data storage
+- **Modular structure**: Separation of API routes, business logic, and data access
+- **Pandas** for data processing and analytics
 
 ## Troubleshooting
 
-### Database Connection Issues
-- **Connection refused**: Ensure LeanXcale container is running and port 1529 is accessible
-- **Can't load plugin**: Make sure `DB_PORT=1529` (not 8765) and the `leanxcale://` dialect is used
-- **ODBC errors**: Uninstall conflicting drivers: `pip uninstall -y lxdbapi`
-
-### Dependency Issues
-- **Protobuf conflicts**: Install the expected version: `pip install protobuf==4.21.0`
-- **Wheel filename issues**: Rename the wheel file to remove special characters
-- **Missing pandas**: Ensure all dependencies are installed in the virtual environment
+### Database Connection
+- Ensure TimescaleDB is running: `docker-compose ps timescaledb`
+- Check connection string in environment variables
+- Verify database exists and user has proper permissions
 
 ### Server Issues
-- **Address already in use**: Kill existing processes: `lsof -ti tcp:8000 | xargs kill -9`
-- **Module not found**: Ensure `PYTHONPATH` includes the backend directory
-- **Permission errors**: Check file permissions and virtual environment activation
+- **Port in use**: `lsof -ti tcp:8000 | xargs kill -9`
+- **Module not found**: Ensure `PYTHONPATH` includes backend directory
+- **Hot-reload not working**: Check that code volumes are mounted in docker-compose.yml
 
-## Architecture Notes
-- Uses FastAPI with Pydantic v2 for request/response validation
-- Modular structure: `api/`, `schemas/`, `models/`, `core/` for better maintainability  
-- LeanXcale HTTP dialect via `pyLeanxcale` wheel (no ODBC setup required)
-- SQLAlchemy for database operations with connection pooling
-- Pandas integration for data processing and analytics
+### Dependencies
+- All dependencies are defined in `pyproject.toml`
+- Use `uv sync` to create virtual environment and install dependencies

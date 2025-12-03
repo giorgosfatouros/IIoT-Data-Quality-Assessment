@@ -27,30 +27,43 @@ fi
 export $(cat .env | grep -v '^#' | xargs)
 
 echo "🔧 Environment Configuration:"
-echo "   DB_IP: $DB_IP"
-echo "   DB_PORT: $DB_PORT"
-echo "   DB_NAME: $DB_NAME"
+echo "   DB_HOST: ${DB_HOST:-timescaledb}"
+echo "   DB_PORT: ${DB_PORT:-5432}"
+echo "   DB_NAME: ${DB_NAME:-iiot_dqa}"
 echo "   OPENAI_API_KEY: ${OPENAI_API_KEY:0:10}..."
 
-# Build and start backend services (database + backend API)
+# Build and start backend services (TimescaleDB + worker + backend API)
 echo "🏗️  Building and starting backend services..."
-docker-compose up --build -d leanxcale-db backend
+docker-compose up --build -d timescaledb worker backend
 
 echo "⏳ Waiting for services to be ready..."
 
-# Wait for LeanXcale database
-echo "   Waiting for LeanXcale database..."
-timeout=60
-while ! docker-compose exec -T leanxcale-db nc -z localhost 1529 2>/dev/null; do
+# Wait for TimescaleDB database
+echo "   Waiting for TimescaleDB database..."
+timeout=90
+while ! docker-compose exec -T timescaledb pg_isready -U ${DB_USER:-iiot_user} -d ${DB_NAME:-iiot_dqa} 2>/dev/null; do
     sleep 2
     timeout=$((timeout - 2))
     if [ $timeout -le 0 ]; then
-        echo "❌ LeanXcale database failed to start within 60 seconds"
-        docker-compose logs leanxcale-db
+        echo "❌ TimescaleDB database failed to start within 90 seconds"
+        docker-compose logs timescaledb
         exit 1
     fi
 done
-echo "   ✅ LeanXcale database is ready"
+echo "   ✅ TimescaleDB database is ready"
+
+# Wait for worker
+echo "   Waiting for worker service..."
+timeout=60
+while ! docker-compose ps worker | grep -q "Up"; do
+    sleep 2
+    timeout=$((timeout - 2))
+    if [ $timeout -le 0 ]; then
+        echo "⚠️  Worker service may not be ready, but continuing..."
+        break
+    fi
+done
+echo "   ✅ Worker service is ready"
 
 # Wait for backend
 echo "   Waiting for backend service..."
@@ -99,7 +112,8 @@ echo "================================================================"
 echo "📊 Frontend: http://localhost:5173"
 echo "🔧 Backend API: http://localhost:8000"
 echo "📚 API Docs: http://localhost:8000/docs"
-echo "🗄️  LeanXcale DB: localhost:1529"
+echo "🗄️  TimescaleDB: localhost:${DB_PORT:-5432}"
+echo "⚙️  Worker: Running in background"
 echo ""
 echo "📋 Useful commands:"
 echo "   View logs: docker-compose logs -f"

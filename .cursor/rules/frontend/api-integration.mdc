@@ -1,0 +1,113 @@
+---
+description: API integration patterns for frontend-backend communication
+globs: ["frontend/src/**/*.tsx"]
+alwaysApply: false
+---
+
+# API Integration
+
+## Base URL
+
+Backend API base URL: `http://localhost:8000`
+
+For production, use environment variable:
+
+```typescript
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+```
+
+## Fetch Pattern
+
+Use async/await for API calls:
+
+```typescript
+const fetchData = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/endpoint`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    const data = await response.json()
+    return data
+  } catch (error) {
+    console.error('API error:', error)
+    throw error
+  }
+}
+```
+
+## POST Requests
+
+```typescript
+const postData = async (payload: RequestData) => {
+  const response = await fetch(`${API_BASE_URL}/api/endpoint`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  return response.json()
+}
+```
+
+## Error Handling
+
+Always handle errors gracefully:
+
+```typescript
+const [error, setError] = useState<string | null>(null)
+
+try {
+  const data = await fetchData()
+  setData(data)
+  setError(null)
+} catch (err) {
+  const message = err instanceof Error ? err.message : 'Unknown error'
+  setError(message)
+  // Show user-friendly error message
+}
+```
+
+## Loading States
+
+Show loading indicators during API calls:
+
+```typescript
+const [loading, setLoading] = useState(false)
+
+const loadData = async () => {
+  setLoading(true)
+  try {
+    const data = await fetchData()
+    setData(data)
+  } finally {
+    setLoading(false)
+  }
+}
+```
+
+## User Feedback
+
+Provide feedback for user actions:
+
+```typescript
+// Success
+if (response.ok) {
+  // Show success message or update UI
+}
+
+// Error
+if (!response.ok) {
+  // Show error message to user
+  alert('Failed to save data. Please try again.')
+}
+```
+
+## Common Endpoints
+
+- `/api/tables` - List available machine groups
+- `/api/data` - Get sensor data
+- `/api/visualization/analytics` - Get analytics data
+- `/api/agent/chat` - DQA Agent chat endpoint
+- `/api/import/upload` - Data import endpoint

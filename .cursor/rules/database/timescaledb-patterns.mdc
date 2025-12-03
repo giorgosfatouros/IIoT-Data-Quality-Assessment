@@ -1,0 +1,126 @@
+---
+description: TimescaleDB patterns and best practices for time-series data
+globs: ["database/**/*.sql", "backend/**/*.py"]
+alwaysApply: false
+---
+
+# TimescaleDB Patterns
+
+## Hypertables
+
+Use hypertables for time-series data:
+
+```sql
+-- Create regular table
+CREATE TABLE raw_sensor_data (
+    timestamp TIMESTAMPTZ NOT NULL,
+    sensor_tag VARCHAR(100) NOT NULL,
+    value DOUBLE PRECISION NOT NULL,
+    machine_group VARCHAR(100) NOT NULL,
+    quality_flag VARCHAR(20) DEFAULT 'valid'
+);
+
+-- Convert to hypertable
+SELECT create_hypertable('raw_sensor_data', 'timestamp');
+```
+
+## Continuous Aggregates
+
+Use continuous aggregates for pre-computed aggregations:
+
+```sql
+CREATE MATERIALIZED VIEW aggregated_insights_hourly
+WITH (timescaledb.continuous) AS
+SELECT
+    time_bucket('1 hour', timestamp) AS bucket,
+    machine_group,
+    sensor_tag,
+    AVG(value) AS avg_value,
+    COUNT(*) AS count_value
+FROM raw_sensor_data
+GROUP BY bucket, machine_group, sensor_tag;
+```
+
+## Compression Policies
+
+Enable compression for old data:
+
+```sql
+-- Add compression to hypertable
+ALTER TABLE raw_sensor_data SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'machine_group, sensor_tag'
+);
+
+-- Create compression policy (compress data older than 7 days)
+SELECT add_compression_policy('raw_sensor_data', INTERVAL '7 days');
+```
+
+## Query Patterns
+
+### Always Filter by Machine Group
+
+```sql
+SELECT * FROM aggregated_insights
+WHERE machine_group = 'K-2201'
+  AND timestamp >= NOW() - INTERVAL '24 hours'
+ORDER BY timestamp, sensor_tag;
+```
+
+### Use Time Ranges
+
+```sql
+SELECT * FROM raw_sensor_data
+WHERE machine_group = :machine_group
+  AND timestamp >= :start_time
+  AND timestamp < :end_time
+ORDER BY timestamp;
+```
+
+### Aggregate Queries
+
+```sql
+SELECT 
+    time_bucket('1 hour', timestamp) AS hour,
+    sensor_tag,
+    AVG(value) AS avg_value,
+    COUNT(*) AS count
+FROM raw_sensor_data
+WHERE machine_group = :machine_group
+  AND timestamp >= :start_time
+GROUP BY hour, sensor_tag
+ORDER BY hour, sensor_tag;
+```
+
+## Database Initialization
+
+SQL scripts in `database/init/` are executed in alphabetical order:
+
+1. `01_create_extensions.sql` - Enable TimescaleDB extension
+2. `02_create_tables.sql` - Create schema, hypertables, continuous aggregates
+3. `03_populate_sensor_thresholds.sql` - Populate metadata
+
+## Table Reference
+
+### raw_sensor_data (Hypertable)
+- Primary time-series data
+- Partitioned by `timestamp`
+- Indexed on `(machine_group, sensor_tag, timestamp)`
+
+### aggregated_insights (Hypertable)
+- Pre-aggregated data with quality metrics
+- Contains: `avg_value`, `count_value`, `count_invalid`, `count_missing`, `count_anomaly`
+- Quality scores: `completeness_score`, `validity_score`, `anomaly_score`, `overall_quality_score`
+
+### sensor_thresholds
+- Metadata table
+- Contains: `sensor_tag`, `machine_group`, `low_threshold`, `high_threshold`, `threshold_type`
+
+## Best Practices
+
+1. **Always filter by `machine_group`** - Required for performance
+2. **Use time ranges** - Never query all data without time bounds
+3. **Leverage continuous aggregates** - Use pre-computed aggregations when possible
+4. **Index properly** - Index on `(machine_group, sensor_tag, timestamp)`
+5. **Use compression** - Enable compression for historical data
+6. **Batch inserts** - Insert data in batches for better performance

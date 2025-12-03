@@ -181,13 +181,11 @@ export default function DataVisualization() {
       const response = await fetch(`${API_BASE}/tables`)
       if (!response.ok) throw new Error('Failed to fetch tables')
       const allTables = await response.json()
-      // Filter tables with "hours" in name (like Streamlit version)
-      const filteredTables = allTables.filter((table: string) => 
-        table.toLowerCase().includes('hours')
-      )
-      setTables(filteredTables)
-      if (filteredTables.length > 0 && !selectedTable) {
-        setSelectedTable(filteredTables[0])
+      // Use all machine groups from aggregated_insights (no filtering needed)
+      // The /tables endpoint already returns distinct machine_group values
+      setTables(allTables)
+      if (allTables.length > 0 && !selectedTable) {
+        setSelectedTable(allTables[0])
       }
     } catch (err) {
       setError('Error fetching tables: ' + (err as Error).message)

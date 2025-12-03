@@ -51,6 +51,7 @@ export default function DataLoading() {
   const [uploadStatus, setUploadStatus] = useState<string>('')
   const [importAvailable, setImportAvailable] = useState<boolean>(false)
   const [importHealthMessage, setImportHealthMessage] = useState<string>('')
+  const [selectedSensors, setSelectedSensors] = useState<Set<string>>(new Set())
 
   const API_BASE = 'http://localhost:8000'
 
@@ -72,11 +73,9 @@ export default function DataLoading() {
       const response = await fetch(`${API_BASE}/tables`)
       if (!response.ok) throw new Error('Failed to fetch tables')
       const allTables = await response.json()
-      // Filter tables with "hours" in name (like Streamlit version)
-      const filteredTables = allTables.filter((table: string) => 
-        table.toLowerCase().includes('hours')
-      )
-      setTables(filteredTables)
+      // Use all machine groups from aggregated_insights (no filtering needed)
+      // The /tables endpoint already returns distinct machine_group values
+      setTables(allTables)
     } catch (err) {
       setError('Error fetching tables: ' + (err as Error).message)
     }
@@ -213,6 +212,10 @@ export default function DataLoading() {
         if (!uploadTableName && validation.suggested_table_name) {
           setUploadTableName(validation.suggested_table_name)
         }
+        // Auto-select all sensors by default
+        if (validation.available_sensors && validation.available_sensors.length > 0) {
+          setSelectedSensors(new Set(validation.available_sensors))
+        }
       }
     } catch (err) {
       setError('Validation error: ' + (err as Error).message)
@@ -243,6 +246,11 @@ export default function DataLoading() {
       formData.append('tags_file', uploadTagsFile)
       formData.append('table_name', uploadTableName)
       formData.append('machine_type', uploadMachineType)
+      
+      // Add selected sensors if any are selected (otherwise import all)
+      if (selectedSensors.size > 0 && selectedSensors.size < (uploadValidation?.available_sensors?.length || Infinity)) {
+        formData.append('selected_sensors', Array.from(selectedSensors).join(','))
+      }
 
       const response = await fetch(`${API_BASE}/import/upload`, {
         method: 'POST',
@@ -314,6 +322,29 @@ export default function DataLoading() {
     setUploadJobId('')
     setUploadProgress(0)
     setUploadStatus('')
+    setSelectedSensors(new Set())
+  }
+  
+  // Toggle sensor selection
+  const toggleSensor = (sensor: string) => {
+    const newSelected = new Set(selectedSensors)
+    if (newSelected.has(sensor)) {
+      newSelected.delete(sensor)
+    } else {
+      newSelected.add(sensor)
+    }
+    setSelectedSensors(newSelected)
+  }
+  
+  // Select/deselect all sensors
+  const toggleAllSensors = () => {
+    if (uploadValidation?.available_sensors) {
+      if (selectedSensors.size === uploadValidation.available_sensors.length) {
+        setSelectedSensors(new Set())
+      } else {
+        setSelectedSensors(new Set(uploadValidation.available_sensors))
+      }
+    }
   }
 
 
@@ -424,7 +455,7 @@ export default function DataLoading() {
                 <Database className="text-white" size={24} />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-white">LeanXcale Database</h3>
+                <h3 className="text-lg font-semibold text-white">Database</h3>
                 <p className="text-gray-400 text-sm">Load existing sensor data from connected database</p>
               </div>
               {dataSource === 'database' && (
@@ -769,15 +800,32 @@ export default function DataLoading() {
                       Rows: {uploadValidation.data_file.row_count?.toLocaleString() || 'N/A'} | 
                       Columns: {uploadValidation.data_file.column_count || 'N/A'}
                     </p>
+                    {uploadValidation.data_file.sensor_tags && uploadValidation.data_file.sensor_tags.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-blue-300 font-medium mb-2">
+                          Identified Sensors ({uploadValidation.data_file.sensor_tags.length}):
+                        </p>
+                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto bg-gray-800/50 rounded p-2">
+                          {uploadValidation.data_file.sensor_tags.map((tag: string, i: number) => (
+                            <span
+                              key={i}
+                              className="inline-block bg-blue-600/30 text-blue-200 px-2 py-1 rounded text-xs border border-blue-500/30"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {uploadValidation.data_file.errors.length > 0 && (
-                      <div className="text-red-300">
+                      <div className="text-red-300 mt-2">
                         {uploadValidation.data_file.errors.map((err: string, i: number) => (
                           <p key={i}>❌ {err}</p>
                         ))}
                       </div>
                     )}
                     {uploadValidation.data_file.warnings.length > 0 && (
-                      <div className="text-yellow-300">
+                      <div className="text-yellow-300 mt-2">
                         {uploadValidation.data_file.warnings.map((warn: string, i: number) => (
                           <p key={i}>⚠️ {warn}</p>
                         ))}
@@ -823,6 +871,47 @@ export default function DataLoading() {
                   </div>
                 </div>
 
+                {/* Sensor Selection */}
+                {uploadValidation.can_proceed && uploadValidation.available_sensors && uploadValidation.available_sensors.length > 0 && (
+                  <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Settings className="text-blue-400" size={20} />
+                        <h3 className="font-semibold text-white">
+                          Select Sensors to Import
+                        </h3>
+                      </div>
+                      <button
+                        onClick={toggleAllSensors}
+                        className="text-sm text-blue-300 hover:text-blue-200 underline"
+                      >
+                        {selectedSensors.size === uploadValidation.available_sensors.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+                    <p className="text-sm text-blue-300 mb-3">
+                      {selectedSensors.size} of {uploadValidation.available_sensors.length} sensors selected
+                    </p>
+                    <div className="max-h-64 overflow-y-auto bg-gray-800/50 rounded p-3 space-y-2">
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                        {uploadValidation.available_sensors.map((sensor: string) => (
+                          <label
+                            key={sensor}
+                            className="flex items-center gap-2 p-2 bg-gray-700/50 hover:bg-gray-700 rounded cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedSensors.has(sensor)}
+                              onChange={() => toggleSensor(sensor)}
+                              className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-200">{sensor}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Overall Status */}
                 {uploadValidation.can_proceed && (
                   <div className="bg-green-900/20 border border-green-600 rounded-lg p-4">
@@ -830,6 +919,11 @@ export default function DataLoading() {
                       <CheckCircle className="text-green-400" size={20} />
                       <p className="text-green-200 font-medium">
                         ✅ Validation passed! Ready to import.
+                        {selectedSensors.size > 0 && selectedSensors.size < (uploadValidation?.available_sensors?.length || 0) && (
+                          <span className="ml-2 text-green-300 text-sm">
+                            ({selectedSensors.size} sensors selected)
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>

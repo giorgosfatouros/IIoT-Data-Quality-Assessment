@@ -1,0 +1,50 @@
+FROM python:3.11-slim
+
+LABEL maintainer="IIoT Data Quality Team"
+LABEL description="Data Quality Assessment Worker for IoT Sensor Data (using uv project management)"
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast package management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Set PATH for uv
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Verify uv is available
+RUN /root/.cargo/bin/uv --version
+
+# Copy project files (pyproject.toml and source code)
+COPY worker/pyproject.toml /app/pyproject.toml
+COPY worker/src /app/worker/src
+COPY backend/config /app/config
+
+# Install dependencies using uv sync (creates virtual environment)
+RUN /root/.cargo/bin/uv sync --frozen
+
+# Create necessary directories
+RUN mkdir -p /app/logs
+
+# Set Python path
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
+
+# Run the worker using uv run
+CMD ["/root/.cargo/bin/uv", "run", "python", "-m", "worker.src.main"]
+
+
+
+

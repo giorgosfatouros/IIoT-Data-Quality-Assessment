@@ -1,0 +1,56 @@
+---
+description: Development workflow and local development setup
+alwaysApply: true
+---
+
+# Development Workflow
+
+## Starting Development Environment
+
+Use the provided startup script to start all services:
+
+```bash
+./start-dev.sh
+```
+
+This script:
+1. Checks Docker is running
+2. Creates `.env` from `env.example` if missing
+3. Builds and starts Docker services (TimescaleDB, worker, backend)
+4. Waits for services to be healthy
+5. Starts frontend locally with Vite
+
+## Service Management
+
+- **Start services**: `docker-compose up -d`
+- **Stop services**: `docker-compose down` or `./stop-dev.sh`
+- **View logs**: `docker-compose logs -f [service-name]`
+- **Restart service**: `docker-compose restart [service-name]`
+
+## Hot-Reload
+
+- **Backend**: Uvicorn runs with `--reload` flag. Code changes in `backend/api/`, `backend/core/`, `backend/models/`, `backend/schemas/` are automatically reloaded
+- **Frontend**: Vite provides hot module replacement (HMR) for instant updates
+- **Worker**: Requires manual restart: `docker-compose restart worker`
+
+## Environment Variables
+
+Configuration via `.env` file (copy from `env.example`):
+
+- Database: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`
+- OpenAI: `OPENAI_API_KEY`
+- Worker: `AGGREGATION_INTERVAL_SECONDS`, `WORKER_INTERVAL_SECONDS`, etc.
+
+## Database Migrations
+
+Database initialization scripts in `database/init/` are executed automatically in alphabetical order:
+- `01_create_extensions.sql` - Enable TimescaleDB extension
+- `02_create_tables.sql` - Create schema and hypertables
+- `03_populate_sensor_thresholds.sql` - Populate metadata
+
+## Development URLs
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+- TimescaleDB: localhost:5432

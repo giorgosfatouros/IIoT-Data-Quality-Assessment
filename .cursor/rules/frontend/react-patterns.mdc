@@ -1,0 +1,132 @@
+---
+description: React patterns and best practices for component development
+globs: ["frontend/src/**/*.tsx", "frontend/src/**/*.ts"]
+alwaysApply: false
+---
+
+# React Patterns
+
+## Functional Components
+
+**Always use functional components with hooks:**
+
+```typescript
+import { useState, useEffect } from 'react'
+
+interface Props {
+  title: string
+  onAction: () => void
+}
+
+export default function MyComponent({ title, onAction }: Props) {
+  const [count, setCount] = useState(0)
+  
+  useEffect(() => {
+    // Side effects
+  }, [])
+  
+  return <div>{title}</div>
+}
+```
+
+## State Management
+
+Use `useState` for local state:
+
+```typescript
+const [data, setData] = useState<string[]>([])
+const [loading, setLoading] = useState(false)
+const [error, setError] = useState<string | null>(null)
+```
+
+Use `useEffect` for side effects:
+
+```typescript
+useEffect(() => {
+  fetchData()
+}, [dependencies])
+```
+
+## TypeScript Interfaces
+
+**Define interfaces for props and state:**
+
+```typescript
+interface SensorData {
+  id: string
+  value: number
+  timestamp: Date
+}
+
+interface ComponentProps {
+  sensors: SensorData[]
+  onSelect: (id: string) => void
+}
+```
+
+## Styling with Tailwind CSS
+
+Use Tailwind utility classes:
+
+```typescript
+<div className="bg-gray-800 border-b border-gray-700 flex-shrink-0">
+  <button className="p-2 rounded-md text-gray-400 hover:text-white">
+    Click me
+  </button>
+</div>
+```
+
+## Icons
+
+Use `lucide-react` for icons:
+
+```typescript
+import { Menu, X, ChevronRight } from 'lucide-react'
+
+<Menu size={20} />
+```
+
+## Navigation
+
+Use React Router's `NavLink`:
+
+```typescript
+import { NavLink } from 'react-router-dom'
+
+<NavLink 
+  to="/data-loading" 
+  className={({ isActive }) => 
+    isActive ? 'active-class' : 'inactive-class'
+  }
+>
+  Data Loading
+</NavLink>
+```
+
+## Error Handling
+
+Handle errors in async operations:
+
+```typescript
+try {
+  setLoading(true)
+  const response = await fetch('/api/endpoint')
+  if (!response.ok) throw new Error('Failed to fetch')
+  const data = await response.json()
+  setData(data)
+} catch (err) {
+  setError(err instanceof Error ? err.message : 'Unknown error')
+} finally {
+  setLoading(false)
+}
+```
+
+## Loading States
+
+Always show loading indicators:
+
+```typescript
+{loading && <div>Loading...</div>}
+{error && <div className="text-red-500">{error}</div>}
+{data && <DataDisplay data={data} />}
+```

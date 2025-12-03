@@ -1,0 +1,128 @@
+---
+description: Worker service patterns for background data aggregation
+globs: ["worker/**/*.py"]
+alwaysApply: false
+---
+
+# Worker Patterns
+
+## Worker Service Overview
+
+The worker is a background service that:
+- Aggregates raw sensor data into time windows
+- Calculates data quality metrics (completeness, validity, anomaly scores)
+- Inserts aggregated insights into TimescaleDB
+- Runs continuously with configurable intervals
+
+## Directory Structure
+
+```
+worker/
+├── src/
+│   ├── main.py                    # Entry point, signal handling, main loop
+│   ├── config.py                  # Configuration from environment variables
+│   ├── database.py                # Database connection management
+│   ├── aggregation_service.py    # Aggregation logic
+│   └── quality_assessment.py     # Quality scoring algorithms
+└── pyproject.toml                 # Dependencies
+```
+
+## Entry Point
+
+Main entry point: `worker/src/main.py`
+
+Run as: `python -m worker.src.main`
+
+## Configuration
+
+Use `worker/src/config.py` for all configuration:
+
+```python
+from worker.src.config import get_config
+
+config = get_config()
+# Access: config.db_host, config.aggregation_interval_seconds, etc.
+```
+
+Configuration loaded from environment variables:
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`
+- `AGGREGATION_INTERVAL_SECONDS` (default: 3600)
+- `WORKER_INTERVAL_SECONDS` (default: 60)
+- `ANOMALY_THRESHOLD_ZSCORE` (default: 2.0)
+- `BATCH_SIZE` (default: 1000)
+- `LOG_LEVEL` (default: INFO)
+
+## Database Connection
+
+Use `worker/src/database.py`:
+
+```python
+from worker.src.database import get_db_connection
+
+with get_db_connection() as conn:
+    # Database operations
+    pass
+```
+
+## Aggregation Logic
+
+Aggregation handled in `worker/src/aggregation_service.py`:
+- Detects pending aggregation windows
+- Processes raw data from `raw_sensor_data` table
+- Computes aggregations (mean, count, etc.)
+- Calculates quality metrics
+
+## Quality Assessment
+
+Quality scoring in `worker/src/quality_assessment.py`:
+- Completeness score (based on missing values)
+- Validity score (based on threshold violations)
+- Anomaly score (based on statistical outliers)
+- Overall quality score (weighted combination)
+
+## Main Loop Pattern
+
+```python
+import signal
+import time
+
+shutdown_requested = False
+
+def signal_handler(signum, frame):
+    global shutdown_requested
+    shutdown_requested = True
+
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
+
+while not shutdown_requested:
+    try:
+        # Perform aggregation
+        process_aggregations()
+    except Exception as e:
+        logger.error(f"Aggregation error: {e}", exc_info=True)
+    
+    time.sleep(config.worker_interval_seconds)
+```
+
+## Logging
+
+Use structured logging:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+logger.info("Starting aggregation cycle")
+logger.debug(f"Processing window: {window_start} to {window_end}")
+logger.warning("Low data quality detected")
+logger.error("Aggregation failed", exc_info=True)
+```
+
+## Error Handling
+
+- Handle database connection errors gracefully
+- Log all errors with context
+- Continue running on non-fatal errors
+- Exit gracefully on shutdown signals

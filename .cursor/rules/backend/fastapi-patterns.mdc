@@ -1,0 +1,93 @@
+---
+description: FastAPI patterns and best practices for API development
+globs: ["backend/api/**", "backend/main.py"]
+alwaysApply: false
+---
+
+# FastAPI Patterns
+
+## Router Pattern
+
+Create routers in `api/` directory and register in `main.py`:
+
+```python
+# api/visualization.py
+from fastapi import APIRouter
+router = APIRouter(prefix="/api/visualization", tags=["visualization"])
+
+@router.get("/endpoint")
+def get_data():
+    pass
+
+# main.py
+from api.visualization import router as visualization_router
+app.include_router(visualization_router)
+```
+
+## Request/Response Validation
+
+Always use Pydantic models for validation:
+
+```python
+from pydantic import BaseModel
+from typing import Optional, List
+
+class RequestModel(BaseModel):
+    field1: str
+    field2: Optional[int] = None
+
+@router.post("/endpoint")
+def create_item(item: RequestModel):
+    # item is automatically validated
+    pass
+```
+
+## Database Operations
+
+**Always use `@with_retry` decorator for database queries:**
+
+```python
+from core.connection_manager import with_retry
+from models.database import get_engine
+from sqlalchemy import text
+
+@router.get("/data")
+@with_retry(max_retries=3, test_connection=True)
+def get_data():
+    engine = get_engine()
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT * FROM table"))
+        return result.fetchall()
+```
+
+## Error Handling
+
+Use `HTTPException` for API errors:
+
+```python
+from fastapi import HTTPException
+
+if not data:
+    raise HTTPException(status_code=404, detail="Data not found")
+```
+
+## OpenAPI Documentation
+
+- Use descriptive function docstrings
+- Use `tags` parameter in routers
+- Use `response_model` for response types
+- Use `summary` and `description` in route decorators
+
+## CORS Configuration
+
+Configured in `main.py`:
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure appropriately for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```

@@ -82,11 +82,11 @@ export default function MissingValues() {
       const response = await fetch(`${API_BASE}/tables`)
       if (!response.ok) throw new Error('Failed to fetch tables')
       const data = await response.json()
-      // Filter to only show _HOURS tables for aggregated data
-      const hoursTables = data.filter((table: string) => table.endsWith('_HOURS'))
-      setTables(hoursTables)
-      if (hoursTables.length > 0 && !selectedTable) {
-        setSelectedTable(hoursTables[0])
+      // Use all machine groups from aggregated_insights (no filtering needed)
+      // The /tables endpoint already returns distinct machine_group values
+      setTables(data)
+      if (data.length > 0 && !selectedTable) {
+        setSelectedTable(data[0])
       }
     } catch (error) {
       console.error('Error fetching tables:', error)

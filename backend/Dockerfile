@@ -1,42 +1,44 @@
-FROM python:3.8-slim-bullseye
+FROM python:3.11-slim
 
-# Set environment variables for LeanXcale
-ENV DB_USER=app
-ENV DB_PASS=app
-ENV DB_IP=127.0.0.1
-ENV DB_PORT=1529
-ENV DB_NAME=MOH
+# Set environment variables for PostgreSQL/TimescaleDB
+ENV DB_HOST=timescaledb
+ENV DB_USER=iiot_user
+ENV DB_PASS=iiot_password
+ENV DB_PORT=5432
+ENV DB_NAME=iiot_dqa
 ENV PYTHONPATH=/app
 
-# Install system dependencies for LeanXcale
+# Install system dependencies for PostgreSQL
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    libffi-dev \
-    libssl-dev \
+    libpq-dev \
+    postgresql-client \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy LeanXcale wheel files from backend/tmp directory
-COPY backend/tmp/pyLeanxcale-1.9.13-py3-none-any.whl /tmp/
+# Install uv for fast package management
+RUN curl -LsSf https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz | \
+    tar -xz -C /tmp && \
+    find /tmp -name "uv" -type f -executable -exec mv {} /usr/local/bin/uv \; && \
+    chmod +x /usr/local/bin/uv && \
+    rm -rf /tmp/uv* && \
+    uv --version
 
-# Install LeanXcale client with proper dependencies
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir /tmp/pyLeanxcale-1.9.13-py3-none-any.whl
-
-# Install backend requirements
-COPY backend/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
-
-# Copy backend source code
+# Copy pyproject.toml and source code
+COPY backend/pyproject.toml /app/pyproject.toml
 COPY backend/ /app
+
+# Install Python dependencies using uv (extract from pyproject.toml, install without package)
+RUN cd /app && python -c "import tomllib; f=open('pyproject.toml','rb'); d=tomllib.load(f); deps=d['project']['dependencies']; import subprocess; subprocess.run(['uv', 'pip', 'install', '--system', '--no-cache'] + deps, check=True)"
 
 # Create a startup script to handle environment variables
 RUN echo '#!/bin/bash\n\
-# Wait for LeanXcale database to be ready\n\
-echo "Waiting for LeanXcale database..."\n\
-while ! nc -z $DB_IP $DB_PORT; do\n\
+# Wait for PostgreSQL/TimescaleDB database to be ready\n\
+echo "Waiting for TimescaleDB database..."\n\
+until PGPASSWORD=${DB_PASS} psql -h ${DB_HOST} -U ${DB_USER} -d ${DB_NAME} -c "SELECT 1" > /dev/null 2>&1; do\n\
   echo "Database not ready, waiting..."\n\
   sleep 2\n\
 done\n\
@@ -45,9 +47,6 @@ echo "Database is ready!"\n\
 # Start the application\n\
 exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload\n\
 ' > /app/start.sh && chmod +x /app/start.sh
-
-# Install netcat for database connectivity check
-RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
 
 EXPOSE 8000
 
