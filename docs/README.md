@@ -20,6 +20,9 @@ Welcome to the IIoT Data Quality Assessment Service user documentation. This gui
 - [Troubleshooting](troubleshooting.md) - Common issues and solutions
 - [FAQ](faq.md) - Frequently asked questions
 
+### Technical Documentation
+- [Methodology and Innovation](methodology.md) - Technical approach, value proposition, and innovation highlights
+
 ## Quick Start
 
 1. **Install and Setup**: Follow the [Getting Started Guide](getting-started.md) to set up the application
