@@ -241,7 +241,7 @@ cd backend
 python test_import_api.py
 ```
 
-For complete API documentation, see **[DATA_IMPORT_API.md](DATA_IMPORT_API.md)**.
+For complete API documentation, see **[Data Import Guide](docs/data-import-guide.md)**.
 
 ### Supported Machine Types
 - **KT2201**: K-2201/KT-2201 Machine
